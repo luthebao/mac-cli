@@ -36,6 +36,12 @@ CGWindowID :: c.uint
 foreign core_graphics {
 	CGWindowListCopyWindowInfo :: proc(option: u32, relative_to: CGWindowID) -> CFArrayRef ---
 
+	// Screen Recording gate (macOS 10.15+). Without granted access,
+	// CGWindowListCopyWindowInfo silently filters out other apps' windows
+	// — so we MUST preflight before relying on the list.
+	CGPreflightScreenCaptureAccess :: proc() -> b32 ---
+	CGRequestScreenCaptureAccess   :: proc() -> b32 ---
+
 	// const CFStringRef globals — the keys for the window-info dictionaries.
 	kCGWindowOwnerPID: CFStringRef
 	kCGWindowNumber:   CFStringRef
@@ -93,6 +99,19 @@ find_window_id :: proc(pid: int) -> CGWindowID {
 		}
 	}
 	return fallback
+}
+
+// has_screen_capture_permission returns true if this process can see all
+// windows / capture pixels. Returns immediately without prompting.
+has_screen_capture_permission :: proc() -> bool {
+	return bool(CGPreflightScreenCaptureAccess())
+}
+
+// request_screen_capture_permission triggers the macOS permission dialog
+// on first call per app launch. Returns true if access was granted.
+// Subsequent calls return the cached state without prompting again.
+request_screen_capture_permission :: proc() -> bool {
+	return bool(CGRequestScreenCaptureAccess())
 }
 
 @(private="file")

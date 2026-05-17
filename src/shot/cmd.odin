@@ -7,9 +7,12 @@ import "mc:util"
 
 // cmd_full_screen captures the whole display and saves to ~/Desktop.
 cmd_full_screen :: proc() -> int {
+	if !ensure_permission() {
+		return 1
+	}
 	path := build_path("screen", context.temp_allocator)
 	if !capture_full_screen(path) {
-		fmt.eprintln("mac-cli shot: screencapture failed (check Screen Recording permission in System Settings → Privacy)")
+		fmt.eprintln("mac-cli shot: screencapture failed")
 		return 1
 	}
 	report_saved(path)
@@ -88,6 +91,9 @@ cmd_interactive :: proc() -> int {
 // window to register before capturing.
 @(private)
 capture_app :: proc(pid: int, name: string) -> int {
+	if !ensure_permission() {
+		return 1
+	}
 	win_id := find_window_id(pid)
 	if win_id == 0 {
 		// Likely on another Space (or minimized). Activate so macOS brings
@@ -136,4 +142,26 @@ wait_for_window :: proc(pid: int, timeout: time.Duration) -> CGWindowID {
 report_saved :: proc(path: string) {
 	fmt.println(util.green("✓ screenshot saved", context.temp_allocator))
 	fmt.println(path)
+}
+
+// ensure_permission preflights Screen Recording, triggers the OS prompt
+// once if missing, and re-checks. Without this permission both
+// CGWindowListCopyWindowInfo and `screencapture` silently produce useless
+// output (filtered window list, black image) — so we fail fast with a
+// clear explanation rather than letting users debug the symptom.
+@(private)
+ensure_permission :: proc() -> bool {
+	if has_screen_capture_permission() {
+		return true
+	}
+	// Triggers the system dialog the first time per launch. If the user
+	// has already declined this launch, it returns false without re-prompting.
+	_ = request_screen_capture_permission()
+	if has_screen_capture_permission() {
+		return true
+	}
+	fmt.eprintln(util.yellow("mac-cli shot: Screen Recording permission required.", context.temp_allocator))
+	fmt.eprintln("  Open: System Settings → Privacy & Security → Screen Recording")
+	fmt.eprintln("  Enable your terminal app (Terminal, iTerm, ghostty, …), then quit & relaunch it.")
+	return false
 }
