@@ -72,6 +72,7 @@ print_welcome :: proc(version: string) {
 		center(cwd_meta, inner, context.temp_allocator),
 		"",
 		indent("• mac-cli clean       reclaim disk space", inner),
+		indent("• mac-cli shot        screenshot an app or the screen", inner),
 		indent("• mac-cli help        show all commands", inner),
 		indent("• mac-cli version     print version", inner),
 		"",

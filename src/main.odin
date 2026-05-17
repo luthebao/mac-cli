@@ -5,10 +5,12 @@ import "core:os"
 
 import "mc:cli"
 import "mc:clean"
+import "mc:shot"
+import "mc:update"
 
-// Bumped manually per release. Release workflow uses sed to sync this
-// with the git tag before building, so CI artifacts always carry the tag value.
-VERSION :: "0.1.0"
+// Default version. Override at build time with `-define:VERSION=x.y.z`
+// (the Makefile and release workflow inject the tag value this way).
+VERSION :: #config(VERSION, "0.1.0")
 
 main :: proc() {
 	args := os.args[1:]
@@ -32,6 +34,16 @@ main :: proc() {
 		cli.print_help(topic)
 	case "clean":
 		code := clean.dispatch(rest)
+		if code != 0 {
+			os.exit(code)
+		}
+	case "shot":
+		code := shot.dispatch(rest)
+		if code != 0 {
+			os.exit(code)
+		}
+	case "update":
+		code := update.dispatch(rest, VERSION)
 		if code != 0 {
 			os.exit(code)
 		}
