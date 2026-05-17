@@ -2,34 +2,68 @@
 
 A multi-purpose macOS command-line tool, written in [Odin](https://odin-lang.org/).
 
+Currently ships an Apple Silicon (`arm64`) build only.
+
 ## Install
 
-One-liner (no Odin required — pulls the latest release binary):
+One-liner — pulls the latest release binary, no Odin toolchain required:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/luthebao/mac-cli/main/install.sh | bash
 ```
 
-Pin a version or override the install prefix via env vars:
+The script downloads `mac-cli-vX.Y.Z-darwin-arm64.tar.gz` from the latest
+GitHub Release, picks a sensible install dir (`/usr/local/bin` if writable,
+otherwise `~/.local/bin`), strips the macOS quarantine xattr so Gatekeeper
+doesn't block the first run, and prints a `PATH` hint if the chosen dir
+isn't already on `$PATH`.
+
+## Update
+
+The binary updates itself — same install logic, no flags needed:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/luthebao/mac-cli/main/install.sh \
-  | VERSION=0.1.0 PREFIX=$HOME/.local/bin bash
+mac-cli update            # install latest if newer
+mac-cli update --check    # report only; exits non-zero when update available
+mac-cli update --force    # re-run the installer even if already current
 ```
 
 ## Usage
 
 ```bash
 mac-cli                              # print help
+mac-cli help <command>               # detailed help for a command
 mac-cli version                      # print version
+```
+
+### `clean` — disk cleaner
+
+```bash
 mac-cli clean                        # interactive cleaner
 mac-cli clean --risky                # include risky categories
+mac-cli clean -f                     # force file picker on every category
 mac-cli clean categories             # list all 16 cleanable categories
 mac-cli clean uninstall              # remove apps + their leftovers
 mac-cli clean maintenance --dns      # flush DNS cache
 mac-cli clean config --init          # create ~/.mac-cli/clean/config.json
 mac-cli clean backup --list          # list pre-delete backups
 ```
+
+### `shot` — screenshots
+
+```bash
+mac-cli shot                         # interactive picker (type to filter)
+mac-cli shot -s                      # capture full screen
+mac-cli shot -l                      # list running GUI apps with PIDs
+mac-cli shot -p 1234                 # capture a specific app by PID
+```
+
+All screenshots land in `~/Desktop` as PNGs. First run may prompt for the
+Screen Recording permission in System Settings → Privacy.
+
+### `update` — self-updater
+
+See [Update](#update) above.
 
 ## Build from source
 
@@ -38,9 +72,16 @@ Requires Odin (any recent `dev-*` build).
 ```bash
 git clone https://github.com/luthebao/mac-cli.git
 cd mac-cli
-make build         # → build/mac-cli
+make build                           # → build/mac-cli
 make test
-make install       # → /usr/local/bin/mac-cli (or ~/.local/bin)
+make install                         # → /usr/local/bin/mac-cli (or ~/.local/bin)
+```
+
+Override the embedded version for local builds:
+
+```bash
+make build VERSION=0.2.0-dev
+./build/mac-cli version              # → mac-cli 0.2.0-dev
 ```
 
 ## License
@@ -55,10 +96,8 @@ Releases are driven by git tags. Tagging `vX.Y.Z` triggers
 1. Builds `mac-cli` on **macos-14** (arm64), injecting the tag value into the
    binary via `make release VERSION=X.Y.Z` (no source edit needed).
 2. Tars the binary as `mac-cli-vX.Y.Z-darwin-arm64.tar.gz`.
-3. Publishes it to a GitHub Release — which `install.sh` then pulls from.
-
-> Homebrew tap auto-bump is intentionally disabled for now; it will be wired
-> back in once the install flow stabilises.
+3. Publishes it to a GitHub Release — which `install.sh` and `mac-cli update`
+   pull from.
 
 ### Cutting a release
 
@@ -67,10 +106,5 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The tag name (minus the leading `v`) becomes the binary's version — no need
-to edit `src/main.odin` first. For a local debug build with a custom version,
-pass it through `make`:
-
-```bash
-make build VERSION=0.2.0-dev
-```
+The tag name (minus the leading `v`) becomes the binary's version — no source
+edits required.

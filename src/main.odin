@@ -6,6 +6,7 @@ import "core:os"
 import "mc:cli"
 import "mc:clean"
 import "mc:shot"
+import "mc:update"
 
 // Default version. Override at build time with `-define:VERSION=x.y.z`
 // (the Makefile and release workflow inject the tag value this way).
@@ -38,6 +39,11 @@ main :: proc() {
 		}
 	case "shot":
 		code := shot.dispatch(rest)
+		if code != 0 {
+			os.exit(code)
+		}
+	case "update":
+		code := update.dispatch(rest, VERSION)
 		if code != 0 {
 			os.exit(code)
 		}

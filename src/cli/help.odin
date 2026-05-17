@@ -10,6 +10,7 @@ USAGE
 COMMANDS
   clean        Clean caches, logs, junk, and unused files
   shot         Take a screenshot (full screen or a specific app)
+  update       Update mac-cli itself to the latest release
   help [cmd]   Show help (optionally for a specific command)
   version      Print version
 
@@ -20,6 +21,8 @@ EXAMPLES
   mac-cli shot
   mac-cli shot -s
   mac-cli shot -l
+  mac-cli update
+  mac-cli update --check
   mac-cli help clean
 `
 
@@ -72,6 +75,25 @@ EXAMPLES
   mac-cli shot -p 1234
 `
 
+UPDATE_USAGE :: `mac-cli update — pull the latest release binary
+
+USAGE
+  mac-cli update              Check for a new release; install it if found.
+  mac-cli update --check      Only report whether a newer release exists.
+                              Exits non-zero when an update is available.
+  mac-cli update --force      Re-run the installer even if already current.
+
+ENVIRONMENT
+  PREFIX=<dir>                Install dir for the new binary
+                              (forwarded to the install script).
+  VERSION=<x.y.z>             Pin a specific release instead of latest.
+
+EXAMPLES
+  mac-cli update
+  mac-cli update --check
+  PREFIX=$HOME/.local/bin mac-cli update
+`
+
 print_help :: proc(topic: string) {
 	switch topic {
 	case "", "help":
@@ -80,6 +102,8 @@ print_help :: proc(topic: string) {
 		fmt.print(CLEAN_USAGE)
 	case "shot":
 		fmt.print(SHOT_USAGE)
+	case "update":
+		fmt.print(UPDATE_USAGE)
 	case:
 		fmt.eprintfln("mac-cli help: unknown topic %q", topic)
 		fmt.eprint(TOP_USAGE)
