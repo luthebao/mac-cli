@@ -1,10 +1,12 @@
 .PHONY: build test release install clean fmt help
 
-VERSION    := $(shell grep '^VERSION ::' src/main.odin | sed -E 's/.*"([^"]+)".*/\1/')
+# VERSION can be overridden on the command line (e.g. `make build VERSION=1.2.3`)
+# or via the environment. Default falls back to whatever main.odin declares.
+VERSION    ?= $(shell grep '^VERSION ::' src/main.odin | sed -E 's/.*"([^"]+)".*/\1/')
 ARCH       := $(shell uname -m | sed 's/x86_64/amd64/')
 TARGET     := build/mac-cli
 TARBALL    := build/mac-cli-v$(VERSION)-darwin-$(ARCH).tar.gz
-ODIN_FLAGS := -collection:mc=src
+ODIN_FLAGS := -collection:mc=src -define:VERSION=$(VERSION)
 
 help:
 	@echo "mac-cli build targets:"
