@@ -5,6 +5,7 @@ import "core:os"
 
 import "mc:cli"
 import "mc:clean"
+import "mc:shot"
 
 // Bumped manually per release. Release workflow uses sed to sync this
 // with the git tag before building, so CI artifacts always carry the tag value.
@@ -32,6 +33,11 @@ main :: proc() {
 		cli.print_help(topic)
 	case "clean":
 		code := clean.dispatch(rest)
+		if code != 0 {
+			os.exit(code)
+		}
+	case "shot":
+		code := shot.dispatch(rest)
 		if code != 0 {
 			os.exit(code)
 		}
