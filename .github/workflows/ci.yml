@@ -1,0 +1,35 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: build + test (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-14, macos-13]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Odin
+        run: brew install odin
+
+      - name: Show Odin version
+        run: odin version
+
+      - name: Run unit tests
+        run: make test
+
+      - name: Build debug binary
+        run: make build
+
+      - name: Smoke test (help / version / categories)
+        run: |
+          ./build/mac-cli version
+          ./build/mac-cli help
+          ./build/mac-cli clean categories

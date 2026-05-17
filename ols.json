@@ -1,0 +1,14 @@
+{
+  "collections": [
+    {
+      "name": "mc",
+      "path": "./src"
+    }
+  ],
+  "enable_document_symbols": true,
+  "enable_hover": true,
+  "enable_snippets": true,
+  "enable_format": true,
+  "enable_inlay_hints": true,
+  "verbose": false
+}

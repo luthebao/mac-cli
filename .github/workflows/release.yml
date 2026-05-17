@@ -1,0 +1,159 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build:
+    name: build (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - runner: macos-14
+            arch:   arm64
+          - runner: macos-13
+            arch:   amd64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Odin
+        run: brew install odin
+
+      - name: Sync source VERSION with git tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Building $VERSION"
+          sed -i '' "s/^VERSION :: \".*\"/VERSION :: \"$VERSION\"/" src/main.odin
+          grep '^VERSION ::' src/main.odin
+
+      - name: Build release binary
+        run: make release
+
+      - name: Capture artifact info
+        id: artifact
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ARCH="${{ matrix.arch }}"
+          TARBALL="mac-cli-v${VERSION}-darwin-${ARCH}.tar.gz"
+          SHA=$(shasum -a 256 "build/${TARBALL}" | awk '{print $1}')
+          echo "tarball=$TARBALL"  >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA"       >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION"  >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.artifact.outputs.tarball }}
+          path: build/${{ steps.artifact.outputs.tarball }}
+
+      - name: Write SHA for downstream tap-bump
+        run: |
+          echo "${{ steps.artifact.outputs.sha256 }}  ${{ steps.artifact.outputs.tarball }}" > "build/${{ matrix.arch }}.sha"
+      - name: Upload SHA
+        uses: actions/upload-artifact@v4
+        with:
+          name: sha-${{ matrix.arch }}
+          path: build/${{ matrix.arch }}.sha
+
+  release:
+    name: publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Stage release assets
+        run: |
+          mkdir -p release
+          find artifacts -name 'mac-cli-v*.tar.gz' -exec cp {} release/ \;
+          ls -la release
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/mac-cli-v*.tar.gz
+          generate_release_notes: true
+
+  bump-tap:
+    name: bump homebrew tap
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Read versions and SHAs
+        id: meta
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ARM_SHA=$(awk '{print $1}'  artifacts/sha-arm64/arm64.sha)
+          AMD_SHA=$(awk '{print $1}'  artifacts/sha-amd64/amd64.sha)
+          echo "version=$VERSION"  >> "$GITHUB_OUTPUT"
+          echo "arm_sha=$ARM_SHA"  >> "$GITHUB_OUTPUT"
+          echo "amd_sha=$AMD_SHA"  >> "$GITHUB_OUTPUT"
+
+      - name: Checkout tap
+        uses: actions/checkout@v4
+        with:
+          repository: luthebao/homebrew-mac-cli
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Update Formula/mac-cli.rb
+        run: |
+          cd tap
+          VERSION="${{ steps.meta.outputs.version }}"
+          ARM_SHA="${{ steps.meta.outputs.arm_sha }}"
+          AMD_SHA="${{ steps.meta.outputs.amd_sha }}"
+          mkdir -p Formula
+          cat > Formula/mac-cli.rb <<RB
+          class MacCli < Formula
+            desc "Multi-purpose macOS CLI — clean caches, manage system, and more"
+            homepage "https://github.com/luthebao/mac-cli"
+            version "${VERSION}"
+            license "MIT"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/luthebao/mac-cli/releases/download/v#{version}/mac-cli-v#{version}-darwin-arm64.tar.gz"
+                sha256 "${ARM_SHA}"
+              else
+                url "https://github.com/luthebao/mac-cli/releases/download/v#{version}/mac-cli-v#{version}-darwin-amd64.tar.gz"
+                sha256 "${AMD_SHA}"
+              end
+            end
+
+            depends_on :macos
+
+            def install
+              bin.install "mac-cli"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/mac-cli version")
+            end
+          end
+          RB
+
+      - name: Open PR in tap
+        uses: peter-evans/create-pull-request@v6
+        with:
+          path: tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          branch: bump-${{ steps.meta.outputs.version }}
+          title: "Bump mac-cli to ${{ steps.meta.outputs.version }}"
+          commit-message: "mac-cli ${{ steps.meta.outputs.version }}"
+          body: |
+            Auto-bump for [mac-cli v${{ steps.meta.outputs.version }}](https://github.com/luthebao/mac-cli/releases/tag/v${{ steps.meta.outputs.version }}).
+
+            - arm64 sha256: `${{ steps.meta.outputs.arm_sha }}`
+            - amd64 sha256: `${{ steps.meta.outputs.amd_sha }}`

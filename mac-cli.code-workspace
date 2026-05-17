@@ -1,0 +1,33 @@
+{
+  "folders": [
+    {
+      "name": "mac-cli",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "files.associations": {
+      "*.odin": "odin"
+    },
+    "files.exclude": {
+      "build/": true,
+      "**/.DS_Store": true
+    },
+    "editor.insertSpaces": false,
+    "editor.tabSize": 4,
+    "[odin]": {
+      "editor.insertSpaces": false,
+      "editor.tabSize": 4,
+      "editor.detectIndentation": false
+    },
+    "ols.server.path": "ols",
+    "terminal.integrated.env.osx": {
+      "PATH": "/opt/homebrew/bin:${env:PATH}"
+    }
+  },
+  "extensions": {
+    "recommendations": [
+      "DanielGavin.ols"
+    ]
+  }
+}
