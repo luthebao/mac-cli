@@ -18,6 +18,19 @@ otherwise `~/.local/bin`), strips the macOS quarantine xattr so Gatekeeper
 doesn't block the first run, and prints a `PATH` hint if the chosen dir
 isn't already on `$PATH`.
 
+## Agent skill (Claude Code)
+
+If you use [Claude Code](https://claude.com/claude-code), install the
+companion agent skill so Claude can drive `mac-cli` on your behalf — cleaning
+caches, taking app-specific screenshots, optimising media, and so on:
+
+```bash
+npx skills add luthebao/mac-cli
+```
+
+The skill assumes the `mac-cli` binary is already on `$PATH`, so install that
+first (see above).
+
 ## Update
 
 The binary updates itself — same install logic, no flags needed:
@@ -31,7 +44,7 @@ mac-cli update --force    # re-run the installer even if already current
 ## Usage
 
 ```bash
-mac-cli                              # print help
+mac-cli                              # interactive command menu
 mac-cli help <command>               # detailed help for a command
 mac-cli version                      # print version
 ```
@@ -48,6 +61,23 @@ mac-cli clean maintenance --dns      # flush DNS cache
 mac-cli clean config --init          # create ~/.mac-cli/clean/config.json
 mac-cli clean backup --list          # list pre-delete backups
 ```
+
+### `clop` — image & video optimiser
+
+```bash
+mac-cli clop                         # interactive picker (operation + files)
+mac-cli clop -o photo.png            # optimise in place
+mac-cli clop -o ~/Pictures -r        # recurse into a directory
+mac-cli clop -d 50% clip.mp4         # downscale by factor
+mac-cli clop -c webp cover.png       # convert image format
+mac-cli clop -s IMG_2156.jpg         # strip EXIF metadata
+mac-cli clop -o -a -k photo.jpg      # aggressive preset, keep .orig backup
+```
+
+Operations shell out to format-specific CLIs (`pngquant`, `jpegoptim`,
+`gifsicle`, `ffmpeg`, `vips`, `cwebp`, `heif-enc`, `exiftool`). Missing tools
+trigger an interactive `brew install` prompt on first use. Supported formats:
+`.png .jpg .jpeg .gif` (images) and `.mp4 .mov .m4v` (videos).
 
 ### `shot` — screenshots
 

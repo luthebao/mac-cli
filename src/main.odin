@@ -5,6 +5,7 @@ import "core:os"
 
 import "mc:cli"
 import "mc:clean"
+import "mc:clop"
 import "mc:shot"
 import "mc:update"
 
@@ -28,6 +29,10 @@ main :: proc() {
 			return
 		case .Clean:
 			code := clean.dispatch(res.args)
+			if code != 0 { os.exit(code) }
+			return
+		case .Clop:
+			code := clop.dispatch(res.args)
 			if code != 0 { os.exit(code) }
 			return
 		case .Shot:
@@ -56,6 +61,11 @@ main :: proc() {
 		cli.print_help(topic)
 	case "clean":
 		code := clean.dispatch(rest)
+		if code != 0 {
+			os.exit(code)
+		}
+	case "clop":
+		code := clop.dispatch(rest)
 		if code != 0 {
 			os.exit(code)
 		}

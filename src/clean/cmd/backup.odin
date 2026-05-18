@@ -9,6 +9,12 @@ import "mc:fsx"
 import "mc:util"
 
 run_backup :: proc(args: []string) -> int {
+	if len(args) == 0 {
+		chosen, ok := cli.pick_at("clean", "backup")
+		if !ok { return 0 }
+		return run_backup(chosen)
+	}
+
 	spec := []cli.Flag{
 		{name = "list",  takes_value = false},
 		{name = "clean", takes_value = false},

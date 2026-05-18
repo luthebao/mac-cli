@@ -7,6 +7,12 @@ import "mc:cli"
 import "mc:clean/store"
 
 run_config :: proc(args: []string) -> int {
+	if len(args) == 0 {
+		chosen, ok := cli.pick_at("clean", "config")
+		if !ok { return 0 }
+		return run_config(chosen)
+	}
+
 	spec := []cli.Flag{
 		{name = "init", takes_value = false},
 		{name = "show", takes_value = false},

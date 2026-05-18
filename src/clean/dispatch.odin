@@ -2,16 +2,27 @@ package clean
 
 import "core:fmt"
 
+import "mc:cli"
 import "mc:clean/cmd"
 
 // dispatch routes `mac-cli clean <args...>` to the right subcommand.
 // Returns a process exit code (0 = success).
+//
+// With no args, opens the interactive command menu (cli.pick_at). The menu's
+// "interactive" leaf re-enters this proc with args=["interactive"], which
+// routes to the scan-and-clean flow. The sentinel exists because empty args
+// now means "show menu" — picking the default leaf needs a distinct marker
+// or it would infinite-loop back into the menu.
 dispatch :: proc(args: []string) -> int {
 	if len(args) == 0 {
-		return cmd.run_interactive(args)
+		chosen, ok := cli.pick_at("clean")
+		if !ok { return 0 }
+		return dispatch(chosen)
 	}
 
 	switch args[0] {
+	case "interactive":
+		return cmd.run_interactive(args[1:])
 	case "categories":
 		return cmd.run_categories(args[1:])
 	case "config":
