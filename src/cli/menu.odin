@@ -19,6 +19,7 @@ MenuAction :: enum {
 	Version, // selected "version" — main prints the version string
 	Quit,    // selected "quit" — main exits cleanly
 	Clean,   // dispatch clean with .args
+	Clop,    // dispatch clop with .args
 	Shot,    // dispatch shot with .args
 	Update,  // dispatch update with .args
 }
@@ -38,6 +39,7 @@ MenuResult :: struct {
 @(private="file") ARGS_CLEAN_BACKUP      := [?]string{"backup"}
 @(private="file") ARGS_SHOT_SCREEN       := [?]string{"-s"}
 @(private="file") ARGS_SHOT_LIST         := [?]string{"-l"}
+@(private="file") ARGS_CLOP_HELP         := [?]string{"-h"}
 @(private="file") ARGS_UPDATE_CHECK      := [?]string{"--check"}
 @(private="file") ARGS_UPDATE_FORCE      := [?]string{"--force"}
 
@@ -61,6 +63,7 @@ run_menu :: proc(version: string) -> MenuResult {
 
 	top := []Item{
 		{label = "clean",   detail = "reclaim disk space",                action = .Clean},
+		{label = "clop",    detail = "optimise images and videos (CLI only — shows help)", action = .Clop, args = ARGS_CLOP_HELP[:]},
 		{label = "shot",    detail = "screenshot an app or the screen",   action = .Shot},
 		{label = "update",  detail = "install the latest release",        action = .Update},
 		{label = "help",    detail = "show the full command list",        action = .Help},
@@ -109,6 +112,11 @@ run_menu :: proc(version: string) -> MenuResult {
 			sub, sub_title = shot_sub, "mac-cli shot — pick a mode"
 		case .Update:
 			sub, sub_title = update_sub, "mac-cli update — pick an action"
+		case .Clop:
+			// clop needs a <path>; printing help is the best we can do from
+			// a non-input picker. The args slice (ARGS_CLOP_HELP) is already
+			// set on the top-level item, so main dispatches `clop -h`.
+			return {action = chosen.action, args = chosen.args}
 		case .Help, .Version, .Quit:
 			return {action = chosen.action}
 		case .None:

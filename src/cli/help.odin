@@ -9,6 +9,7 @@ USAGE
 
 COMMANDS
   clean        Clean caches, logs, junk, and unused files
+  clop         Optimise / downscale / convert images and videos
   shot         Take a screenshot (full screen or a specific app)
   update       Update mac-cli itself to the latest release
   help [cmd]   Show help (optionally for a specific command)
@@ -18,6 +19,8 @@ EXAMPLES
   mac-cli clean
   mac-cli clean --risky
   mac-cli clean categories
+  mac-cli clop -o photo.jpg
+  mac-cli clop -d 0.5 ~/Videos/clip.mp4
   mac-cli shot
   mac-cli shot -s
   mac-cli shot -l
@@ -75,6 +78,53 @@ EXAMPLES
   mac-cli shot -p 1234
 `
 
+CLOP_USAGE :: `mac-cli clop — optimise, downscale, convert media files
+
+USAGE
+  mac-cli clop -o <path>              Optimise in place (same format)
+  mac-cli clop -d <factor> <path>     Downscale by factor (0.5 or 50%)
+  mac-cli clop -c <format> <path>     Convert image to webp|heic|avif
+  mac-cli clop -s <path>              Strip EXIF metadata
+
+If <path> is a directory, every supported file inside is processed.
+Add -r to recurse into subdirectories. Add -a for aggressive presets.
+Add -k to keep an .orig backup beside each modified file.
+
+OPERATIONS
+  -o, --optimise            pngquant / jpegoptim / gifsicle / ffmpeg
+  -d, --downscale  <f>      vipsthumbnail (images), ffmpeg -vf scale (videos)
+  -c, --convert    <fmt>    cwebp (webp), heif-enc (heic, avif)
+  -s, --stripexif           exiftool (keeps orientation only)
+
+MODIFIERS
+  -a, --aggressive          stronger compression (visible quality loss)
+  -r, --recursive           recurse into subdirectories
+  -k, --keep                save <path>.orig before overwriting
+  -h, --help                show this help
+
+SUPPORTED EXTENSIONS
+  images:  .png .jpg .jpeg .gif
+  videos:  .mp4 .mov .m4v
+  pdfs:    .pdf  (planned; currently skipped)
+
+EXAMPLES
+  mac-cli clop -o ~/Pictures/screenshot.png
+  mac-cli clop -o ~/Pictures -r          # all images+videos under ~/Pictures
+  mac-cli clop -d 50% ~/Videos/clip.mp4
+  mac-cli clop -c webp ~/Pictures/cover.png
+  mac-cli clop -s ~/Phone/IMG_2156.jpg
+
+REQUIRED TOOLS
+  clop shells out to format-specific CLIs. On first use of a format,
+  if the tool is missing, mac-cli will prompt to brew install it (declines
+  silently in non-interactive contexts). Toolchain:
+    images:  pngquant jpegoptim gifsicle vips webp libheif exiftool
+    videos:  ffmpeg
+
+  To install everything up front:
+    brew install pngquant jpegoptim gifsicle ffmpeg vips webp libheif exiftool
+`
+
 UPDATE_USAGE :: `mac-cli update — pull the latest release binary
 
 USAGE
@@ -100,6 +150,8 @@ print_help :: proc(topic: string) {
 		fmt.print(TOP_USAGE)
 	case "clean":
 		fmt.print(CLEAN_USAGE)
+	case "clop":
+		fmt.print(CLOP_USAGE)
 	case "shot":
 		fmt.print(SHOT_USAGE)
 	case "update":
