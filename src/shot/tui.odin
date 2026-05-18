@@ -121,9 +121,15 @@ render_picker :: proc(filter: string, matches: []App, cursor: int) -> int {
 	fmt.println()
 	lines := 3
 
+	// Final line uses `print` (no trailing newline) so the cursor stays on
+	// the hint row. clear_lines(N) then clears all N rendered rows; with a
+	// trailing newline the cursor would sit on the blank row below and the
+	// top row of the picker would never get cleared, causing the picker to
+	// drift down by one row per redraw (visible as stale copies stacking up
+	// when navigating with arrows or scrolling the wheel).
 	if len(matches) == 0 {
 		fmt.println(util.dim("  (no matches)", context.temp_allocator))
-		fmt.println(util.dim("↑↓ navigate · type to filter · ⌫ delete · ⏎ select · Esc cancel", context.temp_allocator))
+		fmt.print(util.dim("↑↓ navigate · type to filter · ⌫ delete · ⏎ select · Esc cancel", context.temp_allocator))
 		return lines + 2
 	}
 
@@ -144,7 +150,7 @@ render_picker :: proc(filter: string, matches: []App, cursor: int) -> int {
 		fmt.println(util.dim(more, context.temp_allocator))
 		lines += 1
 	}
-	fmt.println(util.dim("↑↓ navigate · type to filter · ⌫ delete · ⏎ select · Esc cancel", context.temp_allocator))
+	fmt.print(util.dim("↑↓ navigate · type to filter · ⌫ delete · ⏎ select · Esc cancel", context.temp_allocator))
 	return lines + 1
 }
 

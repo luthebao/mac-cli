@@ -16,7 +16,29 @@ main :: proc() {
 	args := os.args[1:]
 
 	if len(args) == 0 {
-		cli.print_welcome(VERSION)
+		res := cli.run_menu(VERSION)
+		switch res.action {
+		case .None, .Quit:
+			return
+		case .Help:
+			cli.print_help("")
+			return
+		case .Version:
+			fmt.printfln("mac-cli %s", VERSION)
+			return
+		case .Clean:
+			code := clean.dispatch(res.args)
+			if code != 0 { os.exit(code) }
+			return
+		case .Shot:
+			code := shot.dispatch(res.args)
+			if code != 0 { os.exit(code) }
+			return
+		case .Update:
+			code := update.dispatch(res.args, VERSION)
+			if code != 0 { os.exit(code) }
+			return
+		}
 		return
 	}
 
