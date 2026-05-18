@@ -18,6 +18,19 @@ otherwise `~/.local/bin`), strips the macOS quarantine xattr so Gatekeeper
 doesn't block the first run, and prints a `PATH` hint if the chosen dir
 isn't already on `$PATH`.
 
+## Agent skill (Claude Code)
+
+If you use [Claude Code](https://claude.com/claude-code), install the
+companion agent skill so Claude can drive `mac-cli` on your behalf — cleaning
+caches, taking app-specific screenshots, optimising media, and so on:
+
+```bash
+npx skills add luthebao/mac-cli
+```
+
+The skill assumes the `mac-cli` binary is already on `$PATH`, so install that
+first (see above).
+
 ## Update
 
 The binary updates itself — same install logic, no flags needed:

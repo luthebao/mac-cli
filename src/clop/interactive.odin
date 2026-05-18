@@ -151,13 +151,17 @@ op_details :: proc() -> []string {
 
 // ── format picker (for -c) ───────────────────────────────────────────────
 
+// Real formats come first; the trailing two rows are the consistent menu
+// affordances every command lists ("help" and "← back"). pick_format below
+// translates either to the wizard-cancellation path.
 @(private)
-format_labels := [?]string{"webp", "heic", "avif", "← back"}
+format_labels := [?]string{"webp", "heic", "avif", "help", "← back"}
 @(private)
 format_details := [?]string{
 	"google's web image format (cwebp)",
 	"apple's modern image format (heif-enc)",
 	"av1-based image format (heif-enc --avif)",
+	"show clop help",
 	"exit the wizard",
 }
 
@@ -167,8 +171,15 @@ pick_format :: proc() -> (string, bool) {
 		format_labels[:],
 		format_details[:])
 	if !ok { return "", false }
-	// Last row is the synthetic ← back entry. Treat it like Esc.
-	if idx == len(format_labels) - 1 { return "", false }
+	// Trailing two rows (help, ← back) end the wizard. Help prints the
+	// top-level clop usage on the way out so the user has something to read.
+	if format_labels[idx] == "help" {
+		print_help()
+		return "", false
+	}
+	if format_labels[idx] == "← back" {
+		return "", false
+	}
 	return strings.clone(format_labels[idx]), true
 }
 

@@ -8,11 +8,11 @@ description: Drive the `mac-cli` binary on Apple Silicon macOS to clean disk jun
 `mac-cli` is a single-binary macOS utility with three workhorse subcommands plus a self-updater:
 
 | Subcommand | What it does |
-|---|---|
-| `clean`  | Disk cleaner — caches, logs, Trash, Downloads, dev caches, duplicates, plus app uninstall and maintenance tasks |
-| `clop`   | Media pipeline — optimise / downscale / convert / strip EXIF on images and videos |
-| `shot`   | Screenshot — full screen or a single running GUI app by PID |
-| `update` | Self-update from GitHub Releases |
+| ---------- | ------------ |
+| `clean`    | Disk cleaner — caches, logs, Trash, Downloads, dev caches, duplicates, plus app uninstall and maintenance tasks |
+| `clop`     | Media pipeline — optimise / downscale / convert / strip EXIF on images and videos |
+| `shot`     | Screenshot — full screen or a single running GUI app by PID |
+| `update`   | Self-update from GitHub Releases |
 
 The binary lives at `mac-cli` on `$PATH` once installed. Apple Silicon only — refuse to run this on Intel Macs.
 
