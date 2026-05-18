@@ -29,7 +29,19 @@ Options :: struct {
 }
 
 // dispatch routes `mac-cli clop ...`. See clop_help for the surface.
+//
+// Two entry shapes:
+//   * with args  → parse flags + positional, run the requested op
+//   * no args    → enter the interactive TUI (run_interactive)
+//
+// The TUI also fires when invoked from the top-level menu picker (which
+// passes an empty arg slice), so the user-facing flow is the same whether
+// they typed `mac-cli clop` or selected "clop" from `mac-cli`'s menu.
 dispatch :: proc(args: []string) -> int {
+	if len(args) == 0 {
+		return run_interactive()
+	}
+
 	spec := []cli.Flag{
 		{name = "optimise",   short = "o", takes_value = false},
 		{name = "downscale",  short = "d", takes_value = true},
