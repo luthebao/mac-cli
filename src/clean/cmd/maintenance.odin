@@ -7,6 +7,12 @@ import "mc:sysx"
 import "mc:util"
 
 run_maintenance :: proc(args: []string) -> int {
+	if len(args) == 0 {
+		chosen, ok := cli.pick_at("clean", "maintenance")
+		if !ok { return 0 }
+		return run_maintenance(chosen)
+	}
+
 	spec := []cli.Flag{
 		{name = "dns",         takes_value = false},
 		{name = "purgeable",   takes_value = false},

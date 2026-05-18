@@ -30,8 +30,12 @@ run_interactive :: proc() -> int {
 
 	opts: Options
 
-	op, op_ok := pick_op()
+	op, want_help, op_ok := pick_op()
 	if !op_ok { return 0 }
+	if want_help {
+		print_help()
+		return 0
+	}
 	opts.op = op
 
 	// Echo the choice so the next prompt has context. After pick_index
@@ -80,26 +84,38 @@ run_interactive :: proc() -> int {
 
 @(private)
 OpItem :: struct {
-	op:     Op,
-	label:  string,
-	detail: string,
+	op:      Op,
+	label:   string,
+	detail:  string,
+	is_help: bool, // when true, picking this row prints clop's help text
+	is_back: bool, // when true, picking this row exits the wizard
 }
 
+// "help" and "← back" are included so the wizard mirrors the other commands'
+// menus — every TUI lists `help` and a back entry. Picking help sets the
+// `want_help` return; picking back behaves like Esc and cancels the wizard
+// (there is no parent menu to return to because clop is dispatched as a
+// leaf from the top-level menu).
 @(private)
 op_items := []OpItem{
-	{.Optimise,  "optimise",  "compress in place (same format)"},
-	{.Downscale, "downscale", "resize by factor"},
-	{.Convert,   "convert",   "to webp / heic / avif"},
-	{.StripExif, "stripexif", "drop metadata"},
+	{.Optimise,  "optimise",  "compress in place (same format)", false, false},
+	{.Downscale, "downscale", "resize by factor",                false, false},
+	{.Convert,   "convert",   "to webp / heic / avif",           false, false},
+	{.StripExif, "stripexif", "drop metadata",                   false, false},
+	{.None,      "help",      "show clop help",                  true,  false},
+	{.None,      "← back",    "exit the wizard",                 false, true},
 }
 
 @(private)
-pick_op :: proc() -> (Op, bool) {
-	idx, ok := pick_index("mac-cli clop — pick an operation",
+pick_op :: proc() -> (op: Op, want_help: bool, ok: bool) {
+	idx, k := pick_index("mac-cli clop — pick an operation",
 		op_labels(),
 		op_details())
-	if !ok { return .None, false }
-	return op_items[idx].op, true
+	if !k { return .None, false, false }
+	it := op_items[idx]
+	if it.is_back { return .None, false, false }
+	if it.is_help { return .None, true, true }
+	return it.op, false, true
 }
 
 @(private)
@@ -136,12 +152,13 @@ op_details :: proc() -> []string {
 // ── format picker (for -c) ───────────────────────────────────────────────
 
 @(private)
-format_labels := [?]string{"webp", "heic", "avif"}
+format_labels := [?]string{"webp", "heic", "avif", "← back"}
 @(private)
 format_details := [?]string{
 	"google's web image format (cwebp)",
 	"apple's modern image format (heif-enc)",
 	"av1-based image format (heif-enc --avif)",
+	"exit the wizard",
 }
 
 @(private)
@@ -150,6 +167,8 @@ pick_format :: proc() -> (string, bool) {
 		format_labels[:],
 		format_details[:])
 	if !ok { return "", false }
+	// Last row is the synthetic ← back entry. Treat it like Esc.
+	if idx == len(format_labels) - 1 { return "", false }
 	return strings.clone(format_labels[idx]), true
 }
 

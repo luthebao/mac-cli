@@ -11,10 +11,25 @@ REPO        :: "luthebao/mac-cli"
 INSTALL_URL :: "https://raw.githubusercontent.com/luthebao/mac-cli/main/install.sh"
 
 // dispatch routes `mac-cli update <args...>`.
-//   (none)     check + install if a newer release is available
+//   install    check + install if a newer release is available (default)
 //   --check    only report; non-zero exit if an update is available
 //   --force    run the installer even when already on the latest tag
+//   (none)     open the update command menu (cli.pick_at)
+//
+// "install" is the menu sentinel for the default flow; it's stripped before
+// flag parsing so it doesn't collide with the parser's positional handling.
 dispatch :: proc(args: []string, current_version: string) -> int {
+	args := args
+	if len(args) == 0 {
+		chosen, ok := cli.pick_at("update")
+		if !ok { return 0 }
+		return dispatch(chosen, current_version)
+	}
+
+	if args[0] == "install" {
+		args = args[1:]
+	}
+
 	spec := []cli.Flag{
 		{name = "check", short = "c", takes_value = false},
 		{name = "force", short = "f", takes_value = false},
