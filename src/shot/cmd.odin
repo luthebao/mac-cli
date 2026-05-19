@@ -1,8 +1,10 @@
 package shot
 
 import "core:fmt"
+import "core:strings"
 import "core:time"
 
+import "mc:sysx"
 import "mc:util"
 
 // cmd_full_screen captures the whole display and saves to ~/Desktop.
@@ -21,9 +23,9 @@ cmd_full_screen :: proc() -> int {
 
 // cmd_list_apps prints "PID  Name" for every foreground GUI app.
 cmd_list_apps :: proc() -> int {
-	apps, ok := list_apps(context.temp_allocator)
-	if !ok {
-		fmt.eprintln("mac-cli shot: failed to list apps (osascript error)")
+	apps, err := list_apps(context.temp_allocator)
+	if err != "" {
+		report_list_apps_error(err)
 		return 1
 	}
 	if len(apps) == 0 {
@@ -42,9 +44,9 @@ cmd_list_apps :: proc() -> int {
 
 // cmd_capture_pid resolves the PID to an app name, activates it, captures.
 cmd_capture_pid :: proc(pid: int) -> int {
-	apps, ok := list_apps(context.temp_allocator)
-	if !ok {
-		fmt.eprintln("mac-cli shot: failed to list apps (osascript error)")
+	apps, err := list_apps(context.temp_allocator)
+	if err != "" {
+		report_list_apps_error(err)
 		return 1
 	}
 	name := ""
@@ -63,9 +65,9 @@ cmd_capture_pid :: proc(pid: int) -> int {
 
 // cmd_interactive shows the type-to-filter picker, then captures.
 cmd_interactive :: proc() -> int {
-	apps, ok := list_apps(context.temp_allocator)
-	if !ok {
-		fmt.eprintln("mac-cli shot: failed to list apps (osascript error)")
+	apps, err := list_apps(context.temp_allocator)
+	if err != "" {
+		report_list_apps_error(err)
 		return 1
 	}
 	if len(apps) == 0 {
@@ -145,23 +147,61 @@ report_saved :: proc(path: string) {
 }
 
 // ensure_permission preflights Screen Recording, triggers the OS prompt
-// once if missing, and re-checks. Without this permission both
-// CGWindowListCopyWindowInfo and `screencapture` silently produce useless
-// output (filtered window list, black image) — so we fail fast with a
-// clear explanation rather than letting users debug the symptom.
+// when undecided, and waits briefly so a real-time grant unblocks the
+// command. Without this permission both CGWindowListCopyWindowInfo and
+// `screencapture` silently produce useless output (filtered window list,
+// black image), so we gate every capture path through here.
+//
+// CGRequestScreenCaptureAccess is async — it surfaces the dialog and
+// returns the *current* TCC state immediately, so we can't just re-check.
+// We poll for up to PERMISSION_WAIT, then deep-link Settings if the
+// user hasn't granted (covers cached-denial, where the dialog never
+// appears at all).
+@(private)
+PERMISSION_WAIT :: 20 * time.Second
+
 @(private)
 ensure_permission :: proc() -> bool {
 	if has_screen_capture_permission() {
 		return true
 	}
-	// Triggers the system dialog the first time per launch. If the user
-	// has already declined this launch, it returns false without re-prompting.
-	_ = request_screen_capture_permission()
-	if has_screen_capture_permission() {
+	// First call triggers the system dialog if TCC is undecided. If
+	// already granted (race with another check), this returns true.
+	if request_screen_capture_permission() {
 		return true
 	}
+	fmt.println(util.dim("Waiting for Screen Recording permission… grant in the system dialog, or Ctrl-C to cancel.", context.temp_allocator))
+	deadline := time.time_add(time.now(), PERMISSION_WAIT)
+	for time.since(deadline) < 0 {
+		time.sleep(500 * time.Millisecond)
+		if has_screen_capture_permission() {
+			return true
+		}
+	}
+	// Either no dialog appeared (TCC already had a "Don't Allow" entry)
+	// or the user ignored it. Deep-link Settings so they have a one-click
+	// path; the binary still needs to be relaunched after the toggle.
 	fmt.eprintln(util.yellow("mac-cli shot: Screen Recording permission required.", context.temp_allocator))
-	fmt.eprintln("  Open: System Settings → Privacy & Security → Screen Recording")
-	fmt.eprintln("  Enable your terminal app (Terminal, iTerm, ghostty, …), then quit & relaunch it.")
+	fmt.eprintln("  Opening System Settings → Privacy & Security → Screen Recording…")
+	fmt.eprintln("  Enable your terminal app (Terminal, iTerm, ghostty, …), quit & relaunch it, then re-run.")
+	_ = sysx.run_quiet({"open", "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"})
 	return false
+}
+
+// report_list_apps_error explains the underlying osascript failure to the
+// user. The common case is TCC -1743 ("Not authorized to send Apple events
+// to System Events") — same TCC machinery as Screen Recording but a
+// different permission category (Automation), so it has its own Settings
+// pane and its own dialog the user may have dismissed.
+@(private)
+report_list_apps_error :: proc(err: string) {
+	if strings.contains(err, "-1743") || strings.contains(err, "Not authorized") {
+		fmt.eprintln(util.yellow("mac-cli shot: Automation permission required to list running apps.", context.temp_allocator))
+		fmt.eprintln("  Opening System Settings → Privacy & Security → Automation…")
+		fmt.eprintln("  Enable \"System Events\" under your terminal app (Terminal, iTerm, ghostty, …), then re-run.")
+		fmt.eprintfln("  (Underlying error: %s)", err)
+		_ = sysx.run_quiet({"open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"})
+		return
+	}
+	fmt.eprintfln("mac-cli shot: failed to list apps — %s", err)
 }

@@ -24,10 +24,19 @@ end tell`
 
 // list_apps queries macOS for running GUI applications. Background-only
 // processes (LaunchDaemons, helpers without UI) are excluded.
-list_apps :: proc(allocator := context.allocator) -> (apps: []App, ok: bool) {
+//
+// On failure, `err` carries the trimmed stderr from osascript so callers
+// can surface the real reason — most commonly TCC error -1743 ("Not
+// authorized to send Apple events to System Events") when the terminal
+// hasn't been granted Automation permission.
+list_apps :: proc(allocator := context.allocator) -> (apps: []App, err: string) {
 	r := sysx.run_capture({"osascript", "-e", LIST_SCRIPT}, context.temp_allocator)
 	if !r.ok {
-		return nil, false
+		msg := strings.trim_space(r.stderr)
+		if msg == "" {
+			msg = "osascript exited with an error"
+		}
+		return nil, strings.clone(msg, allocator)
 	}
 
 	buf := make([dynamic]App, 0, 32, allocator)
@@ -51,7 +60,7 @@ list_apps :: proc(allocator := context.allocator) -> (apps: []App, ok: bool) {
 		}
 		append(&buf, App{pid = pid, name = name})
 	}
-	return buf[:], true
+	return buf[:], ""
 }
 
 // activate_pid asks System Events to make the process frontmost. On macOS,
