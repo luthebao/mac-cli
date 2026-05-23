@@ -20,6 +20,11 @@ CategoryId :: enum {
 	Node_Modules,
 	Duplicates,
 	Launch_Agents,
+	App_Cache,
+	System_Cache_Root,
+	Homebrew_Cleanup,
+	Homebrew_Autoremove,
+	Orphan_Symlinks,
 }
 
 Safety :: enum {
@@ -53,6 +58,11 @@ CleanableItem :: struct {
 	name:              string,
 	is_directory:      bool,
 	modification_time: time.Time,
+	// requires_sudo flags items that must be removed via `sudo rm -rf` because
+	// the user lacks write permission (typical for /Library/Caches/* subdirs
+	// owned by root or _spotlight). Scanner sets this; clean batches a single
+	// sudo invocation per category to amortize the password prompt.
+	requires_sudo:     bool,
 }
 
 ScanResult :: struct {

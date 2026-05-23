@@ -5,18 +5,29 @@ import "core:path/filepath"
 import "core:strings"
 
 // SAFE_ROOTS lists path prefixes from which deletion is permitted.
-// `{HOME}` is expanded to $HOME at runtime.
+// `{HOME}` is expanded to $HOME at runtime. A `*` segment matches exactly
+// one path component (no slashes inside), enabling patterns like
+// `~/Library/Application Support/*/Cache` without authorizing the whole
+// Application Support tree.
 //
 // CRITICAL — security-sensitive. Audit additions carefully:
 //   - Adding `/` would allow rm -rf the whole machine.
 //   - Adding `/Applications` would let bugs uninstall apps unintentionally.
 //   - Adding paths users don't expect us to touch breaks our safety promise.
+//   - Wildcard `*` is one segment. `**` is NOT supported.
 SAFE_ROOTS := [?]string{
 	"{HOME}/.Trash",
 	"{HOME}/Downloads",
 	"{HOME}/Library/Caches",
 	"{HOME}/Library/Logs",
 	"{HOME}/Library/Application Support/MobileSync/Backup",
+	"{HOME}/Library/Application Support/*/Cache",
+	"{HOME}/Library/Application Support/*/Code Cache",
+	"{HOME}/Library/Application Support/*/GPUCache",
+	"{HOME}/Library/Application Support/*/Service Worker/CacheStorage",
+	"{HOME}/Library/Containers/*/Data/Library/Caches",
+	"{HOME}/Library/WebKit",
+	"{HOME}/Library/Saved Application State",
 	"{HOME}/Library/Mail/Downloads",
 	"{HOME}/Library/Mail/V10",
 	"{HOME}/Library/Developer/Xcode/DerivedData",
@@ -31,6 +42,9 @@ SAFE_ROOTS := [?]string{
 	"{HOME}/.cargo/registry",
 	"{HOME}/.gradle/caches",
 	"{HOME}/.mac-cli",
+	"{HOME}/.local/bin",
+	"{HOME}/bin",
+	"/opt/homebrew/bin",
 	"/tmp",
 	"/private/tmp",
 	"/private/var/folders",
@@ -38,14 +52,20 @@ SAFE_ROOTS := [?]string{
 	"/Library/Caches",
 	"/Library/Logs",
 	"/Library/LaunchAgents",
+	"/Volumes/*/.Trashes",
 }
 
 // DANGER_PATHS always refuse — even if technically below a SAFE_ROOT.
 // Catches symlink escapes and weird edge cases.
+//
+// /Volumes is intentionally NOT here: external-trash deletion needs to reach
+// /Volumes/<disk>/.Trashes/<uid>, and that path is gated narrowly by the
+// SAFE_ROOTS wildcard above. Anything outside that wildcard on a volume
+// still won't match any safe root and will be refused.
 DANGER_PATHS := [?]string{
 	"/", "/System", "/usr", "/bin", "/sbin", "/etc", "/var",
 	"/Library/Frameworks", "/Library/Extensions",
-	"/Applications", "/Network", "/Volumes",
+	"/Applications", "/Network",
 }
 
 DeleteError :: enum {
@@ -84,6 +104,12 @@ is_path_safe :: proc(path: string) -> bool {
 			}
 			expanded, _ = strings.replace_all(root, "{HOME}", h, context.temp_allocator)
 		}
+		if strings.contains(expanded, "*") {
+			if matches_wildcard_root(cleaned, expanded) {
+				return true
+			}
+			continue
+		}
 		// Refuse deleting the safe root itself; require something strictly inside.
 		if cleaned == expanded {
 			return false
@@ -93,6 +119,31 @@ is_path_safe :: proc(path: string) -> bool {
 		}
 	}
 	return false
+}
+
+// matches_wildcard_root returns true iff `path` is strictly under `pattern`,
+// where `*` in pattern matches exactly one path segment. A trailing match
+// requires the path to have MORE segments than the pattern — the pattern
+// itself is treated as the safe-root boundary and refused on equality.
+matches_wildcard_root :: proc(path, pattern: string) -> bool {
+	path_segs := strings.split(path, "/", context.temp_allocator)
+	pat_segs  := strings.split(pattern, "/", context.temp_allocator)
+	if len(path_segs) <= len(pat_segs) {
+		return false
+	}
+	for seg, i in pat_segs {
+		if seg == "*" {
+			// A wildcard segment must consume something non-empty.
+			if path_segs[i] == "" {
+				return false
+			}
+			continue
+		}
+		if path_segs[i] != seg {
+			return false
+		}
+	}
+	return true
 }
 
 // has_path_prefix returns true if `path` is strictly inside `prefix`,
