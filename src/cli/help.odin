@@ -42,18 +42,24 @@ FLAGS (default interactive mode)
       --no-progress      Disable progress bars
 
 SUBCOMMANDS
-  uninstall              Remove apps and their associated files
+  deep                   Deep clean — scan everything, safe categories pre-picked
+  uninstall              Remove apps + leftovers (bundle-id aware)
+  insights               Show where disk space went (largest dirs/files)
+  monitor                Live CPU/memory/disk/network/power dashboard
   maintenance            Maintenance tasks (DNS flush, purgeable, snapshots)
-  categories             List the 16 cleanable categories
+  categories             List the cleanable categories
   config                 Manage ~/.mac-cli/clean/config.json
   backup                 Manage pre-delete backups
 
 EXAMPLES
   mac-cli clean
+  mac-cli clean deep
   mac-cli clean --risky -f
-  mac-cli clean maintenance --dns
+  mac-cli clean insights ~/Library
+  mac-cli clean monitor
+  mac-cli clean monitor --json
   mac-cli clean uninstall --dry-run
-  mac-cli clean config --init
+  mac-cli clean maintenance --dns
 `
 
 print_top_help :: proc() {

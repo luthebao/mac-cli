@@ -1,6 +1,6 @@
 ---
 name: mac-cli
-description: Drive the `mac-cli` binary on Apple Silicon macOS to clean disk junk, take screenshots, and optimise/convert/downscale/strip-EXIF images and videos. Use this skill whenever the user asks to free up disk space, clear caches/logs, uninstall a Mac app cleanly, flush DNS, thin Time Machine snapshots, screenshot a specific running app, compress or convert a media file (png/jpg/gif/mp4/mov), strip image metadata, or anything that sounds like "shrink this video", "make this png smaller", "clean my Mac", "screenshot Slack" — even when they don't name `mac-cli` directly. Apple Silicon (arm64) only.
+description: Drive the `mac-cli` binary on Apple Silicon macOS to clean disk junk, analyze disk usage, monitor live system stats, take screenshots, and optimise/convert/downscale/strip-EXIF images and videos. Use this skill whenever the user asks to free up disk space, clear caches/logs, uninstall a Mac app cleanly, flush DNS, thin Time Machine snapshots, see where disk space went / find large files, check live CPU/memory/disk/network usage, screenshot a specific running app, compress or convert a media file (png/jpg/gif/mp4/mov), strip image metadata, or anything that sounds like "shrink this video", "make this png smaller", "clean my Mac", "what's eating my disk", "how's my Mac doing", "screenshot Slack" — even when they don't name `mac-cli` directly. Apple Silicon (arm64) only.
 ---
 
 # mac-cli
@@ -9,10 +9,12 @@ description: Drive the `mac-cli` binary on Apple Silicon macOS to clean disk jun
 
 | Subcommand | What it does |
 | ---------- | ------------ |
-| `clean`    | Disk cleaner — caches, logs, Trash, Downloads, dev caches, duplicates, plus app uninstall and maintenance tasks |
+| `clean`    | Disk toolkit — cache/log/junk cleaning, a deep-clean preset, bundle-id-aware app uninstall, disk-usage insights, a live system monitor, plus maintenance tasks |
 | `clop`     | Media pipeline — optimise / downscale / convert / strip EXIF on images and videos |
 | `shot`     | Screenshot — full screen or a single running GUI app by PID |
 | `update`   | Self-update from GitHub Releases |
+
+`clean` is itself a small toolkit. Its subcommands: `interactive` (default scan→select→clean), `deep` (scan-everything preset), `uninstall`, `insights` (disk analyzer), `monitor` (live dashboard), `maintenance`, `categories`, `config`, `backup`. `analyze`/`status` are accepted as aliases for `insights`/`monitor`.
 
 The binary lives at `mac-cli` on `$PATH` once installed. Apple Silicon only — refuse to run this on Intel Macs.
 
@@ -30,11 +32,15 @@ When in doubt about a flag, run `mac-cli help <subcommand>` — it's the authori
 
 ## The interactive-vs-flagged rule (read this first)
 
-`mac-cli` is friendly to humans: `mac-cli clean` and `mac-cli shot` with no args both open a TUI picker. **Those modes will hang under an agent because there is no TTY to drive.** Always reach for the flagged form.
+`mac-cli` is friendly to humans: many subcommands open a TUI picker or full-screen view when run bare. Under an agent there's no TTY to drive them, so prefer the flagged/one-shot form. Two behaviors to know:
+
+- The destructive `clean` flows (bare `clean`, `clean interactive`, `clean deep`) now **refuse without a TTY** — they print a short message and exit 0 instead of hanging or deleting. Safe, but you still can't *drive* them as an agent; use the non-interactive subcommands or hand the command to the user.
+- `clean monitor` auto-detects a non-TTY and prints a **single snapshot** instead of the live view (or use `--json`). `clean insights` is one-shot by design. Both are read-only and agent-friendly.
+- `shot` (bare) still opens an interactive picker that **will hang** under an agent — always use a flag.
 
 Rules of thumb:
 
-- `clean` → use a subcommand (`categories`, `maintenance --dns`, `uninstall --dry-run`, `backup --list`, `config --show`) rather than bare `clean`.
+- `clean` → use a non-interactive subcommand (`categories`, `insights`, `monitor --json`, `maintenance --dns`, `uninstall --dry-run`, `backup --list`, `config --show`) rather than bare `clean`/`deep` (those need a TTY).
 - `shot` → use `-s` (full screen), `-l` (list with PIDs), or `-p <pid>` (specific app). Never bare `shot`.
 - `clop` → already flag-driven, but on first use of a format it may prompt to `brew install` a missing tool; in non-interactive contexts it declines silently and the operation fails. Verify required tools exist before invoking on a large batch (see `clop` § below).
 
@@ -48,11 +54,15 @@ If the user explicitly wants the interactive UX (they're sitting at the terminal
 
 `mac-cli clean categories` groups categories into three buckets — **treat these as a hard guardrail**:
 
-- 🟢 **Safe** — Trash, temp files, browser cache, Homebrew cache, Docker. Fine to clean without ceremony.
-- 🟡 **Moderate** — system caches, system logs, dev caches (npm/yarn/pip/DerivedData/CocoaPods), orphaned node_modules, orphaned launch agents. Apps may need to rebuild state; logs help debugging.
-- 🔴 **Risky** — old Downloads, iOS backups, Mail attachments, language files, large files, duplicates. Real data lives here. **Never** include risky categories unless the user has explicitly named one of them or said "include risky" / "clean everything".
+- 🟢 **Safe** — Trash, temp files, browser cache, Homebrew cache + old versions, app caches (Electron/Chromium `Cache`/`Code Cache`/`GPUCache`), system-wide caches, orphaned symlinks, Docker. Fine to clean without ceremony.
+- 🟡 **Moderate** — user caches, system logs, dev caches (npm/yarn/pip/cargo/gradle/bundle/DerivedData/CocoaPods), orphaned node_modules, orphaned launch agents. Apps may need to rebuild state; logs help debugging.
+- 🔴 **Risky** — old Downloads, iOS backups, Mail attachments, large files, duplicates. Real data lives here. **Never** include risky categories unless the user has explicitly named one of them or said "include risky" / "clean everything".
 
-The `--risky` flag is what unlocks 🔴 categories. Treat it like `rm -rf` — opt-in, narrated, and never your default.
+> Note: the **Language Files** category (stripping `.lproj` localizations from `/Applications`) was **removed** — it breaks app code signatures and is blocked by the safety layer. Don't suggest it.
+>
+> **Large Files** and **Duplicate Files** are *file-selection* categories: in the interactive UI the user presses `→` to drill in and tick individual files (kept-newest logic for duplicates). They delete hand-picked files from anywhere under `$HOME`, so they're inherently 🔴.
+
+The `--risky` flag is what unlocks 🔴 categories; `clean deep` turns it on implicitly (see below). Treat it like `rm -rf` — opt-in, narrated, and never your default.
 
 ### Confirmation policy (applies before any deletion runs)
 
@@ -64,7 +74,9 @@ Match the number of confirmations to the bucket of the *most destructive* catego
 
 Apply the same rule across subcommands, not just `clean`:
 
-- `clean uninstall` is 🔴 — always run `--dry-run` first (confirm #1 on the listing), then restate before `--yes` (confirm #2).
+- `clean insights` and `clean monitor` are **read-only** — no confirmation, run freely. They never delete anything.
+- `clean deep` is 🔴 — it scans every category including risky ones and pre-checks the safe/moderate ones for deletion. It requires a TTY (an agent can't drive it), so when a user wants it, hand them the command and let them review the pre-checked list before they confirm in the TUI.
+- `clean uninstall` is 🔴 — always run `--dry-run` first (confirm #1 on the listing), then restate before `--yes` (confirm #2). It now reads each app's bundle id and sweeps ~11 leftover locations (Application Support, Caches, Containers, Group Containers, HTTPStorages, WebKit, Saved State, Logs, Preferences, Cookies, LaunchAgents), so the dry-run list is more thorough than before — review it.
 - `clean maintenance --timemachine` deletes snapshots → 🔴, double-confirm.
 - `clean maintenance --purgeable` / `--dns` → 🟡, single confirm.
 - `clean backup --clean` deletes old backup sessions → 🟡, single confirm.
@@ -80,7 +92,7 @@ Never silently downgrade the count to keep momentum. The cost of asking is a sen
 The bare interactive picker is unusable for agents. Use these instead:
 
 ```bash
-mac-cli clean categories                 # list all 16 (safe to run anytime — pure inspection)
+mac-cli clean categories                 # list every category (safe to run anytime — pure inspection)
 mac-cli clean config --show              # show effective config (paths, excludes, age thresholds)
 mac-cli clean config --init              # write default config to ~/.mac-cli/clean/config.json
 mac-cli clean maintenance --dns          # flush DNS (uses sudo — will prompt for password)
@@ -88,6 +100,28 @@ mac-cli clean maintenance --purgeable    # thin Time Machine local snapshots
 mac-cli clean maintenance --timemachine  # list + delete TM local snapshots
 mac-cli clean backup --list              # list pre-delete backups (clean creates these automatically)
 mac-cli clean backup --clean             # delete backup sessions older than 7 days
+```
+
+### Disk insights (read-only, agent-friendly)
+
+`mac-cli clean insights [path]` prints a one-shot report: the largest folders/files under `path` (default `$HOME`) with proportional bars and percentages, the largest individual files, and a "hidden space" section (iOS backups, old downloads, dev/app caches) tagged *safe to clean* vs *holds real data*. No TTY needed; nothing is deleted.
+
+```bash
+mac-cli clean insights                    # analyze $HOME
+mac-cli clean insights ~/Library          # analyze a specific folder
+mac-cli clean insights ~/Downloads -n 20  # list the top 20 largest files
+```
+
+Large folders take a moment (it shells out to `du`). Use it to *find* what to clean, then point the user at the relevant category.
+
+### Live system monitor (read-only, agent-friendly)
+
+`mac-cli clean monitor` shows real-time CPU, memory, disk, network, and power with a 0–100 health score. In a terminal it's a full-screen dashboard refreshing every second (press `q` to quit); under an agent / when piped it prints a single snapshot and exits. Use `--json` for parsing.
+
+```bash
+mac-cli clean monitor                     # live dashboard in a terminal; single snapshot if no TTY
+mac-cli clean monitor --json              # one machine-readable snapshot (health_score, cpu, memory, disk, network, battery, uptime)
+mac-cli clean monitor --json | jq .health_score
 ```
 
 For uninstalling a Mac app and its leftovers:
@@ -101,7 +135,11 @@ Run `--dry-run` first, show the user the list, get explicit confirmation, **rest
 
 ### What about cleaning specific categories non-interactively?
 
-The bare `mac-cli clean` is the only path that picks categories, and it requires a TTY. If the user wants a one-shot cleanup of specific 🟢 buckets without the picker, tell them to either (a) run it interactively themselves, or (b) edit `~/.mac-cli/clean/config.json` (see `clean config --show` for the schema) to disable categories they don't want, then run interactively. Don't try to script around the picker.
+The category-picking flows (`mac-cli clean`, `clean deep`) require a TTY and now **refuse outright without one** — you can't script around them. If the user wants a one-shot cleanup of specific buckets without the picker, tell them to either (a) run it interactively themselves (`mac-cli clean`, or `mac-cli clean deep` to scan everything with safe/moderate pre-checked), or (b) edit `~/.mac-cli/clean/config.json` (see `clean config --show` for the schema) to disable categories they don't want, then run interactively.
+
+As the agent, your read-only path is `clean insights` (find what's using space) and `clean categories` (see what's cleanable) — use those to advise, then hand the actual deletion to the user's interactive session.
+
+> Heads-up on what *does* get deleted now: the file-selection categories (Large Files, Duplicate Files) delete hand-picked files from **anywhere under `$HOME`**, including iCloud Drive (`~/Library/Mobile Documents/…`) — deleting an iCloud file removes it from the cloud across devices. Dev caches (`.cargo/registry`, `.gradle/caches`, `.bundle/cache`, Xcode `DerivedData`) and Electron app caches now actually reclaim space (earlier builds wrongly refused them).
 
 ---
 
@@ -203,10 +241,14 @@ Environment overrides: `PREFIX=<dir>` to pick an install dir, `VERSION=x.y.z` to
 - **A `clop` invocation reports a missing tool** → the corresponding brew formula isn't installed; install it and retry (see the toolchain list above).
 - **`shot` produces no file** → Screen Recording permission not granted. Walk the user to System Settings → Privacy & Security → Screen Recording.
 - **`clean maintenance --dns` fails** → needs `sudo`; if the user is in a non-interactive shell with no sudoers entry, surface that clearly rather than retrying.
-- **Hangs forever with no output** → almost always an interactive prompt waiting on a TTY. Kill the process, switch to the flagged form.
+- **`clean` prints "interactive cleanup needs a terminal" and exits** → expected: the destructive scan→clean flows (`clean`, `clean interactive`, `clean deep`) refuse without a TTY. Hand the command to the user; use `clean insights`/`categories` to advise.
+- **`clean … ✓ 0 B freed` with `refused (path not safe)` lines** → the path sits outside `$HOME` or in a protected system location (`/System`, `/Applications`, …). This is the allowlist, **not** a permission issue — `sudo` won't change it. (In-`$HOME` caches, large files, and duplicates are *not* refused on current builds.)
+- **`clean … system error: /private/var/folders/…`** → those temp dirs are in use by running processes; even root can't delete them mid-session. Harmless; they clear when the owning app quits.
+- **Hangs forever with no output** → an interactive prompt waiting on a TTY. On current builds this is `shot` (bare) or a `clop` brew-install prompt — not `clean` (which refuses) or `clean monitor` (which snapshots). Kill the process, switch to the flagged form.
 
 ## Things this skill does *not* do
 
 - Run on Intel Macs (the binary is `darwin-arm64` only).
 - Process PDFs through `clop` (planned, currently skipped).
-- Drive the interactive TUIs of `clean` or `shot`. Use flags, or hand the command back to the user to run.
+- Drive the destructive picker flows (`clean`, `clean interactive`, `clean deep`) or `shot`'s app picker — they need a TTY. Use the non-interactive subcommands (`insights`, `monitor --json`, `categories`, `uninstall --dry-run`, …), or hand the command back to the user.
+- Strip language/localization files from apps — that category was removed (breaks code signatures).

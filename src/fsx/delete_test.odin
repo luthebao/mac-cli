@@ -52,6 +52,40 @@ test_is_path_safe_rejects_prefix_lookalike :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_is_path_safe_leaf_roots_deletable_whole :: proc(t: ^testing.T) {
+	h := os.get_env("HOME", context.temp_allocator)
+	if h == "" {
+		return
+	}
+	// Pure caches surfaced as a single item (path == root) must be deletable.
+	for rel in ([?]string{
+		"/.cargo/registry",
+		"/.gradle/caches",
+		"/.bundle/cache",
+		"/.pnpm-store",
+		"/Library/Developer/Xcode/DerivedData",
+		"/Library/Developer/Xcode/Archives",
+		"/Library/Developer/CoreSimulator/Caches",
+	}) {
+		p := fmt.aprintf("%s%s", h, rel, allocator = context.temp_allocator)
+		testing.expect(t, is_path_safe(p), fmt.tprintf("leaf cache must be deletable: %s", p))
+	}
+}
+
+@(test)
+test_is_path_safe_broad_roots_not_deletable_whole :: proc(t: ^testing.T) {
+	h := os.get_env("HOME", context.temp_allocator)
+	if h == "" {
+		return
+	}
+	// Containers that also hold user data must still refuse wholesale deletion.
+	for rel in ([?]string{"/Downloads", "/Library/Caches", "/Library/Logs", "/.Trash", "/.cargo"}) {
+		p := fmt.aprintf("%s%s", h, rel, allocator = context.temp_allocator)
+		testing.expect(t, !is_path_safe(p), fmt.tprintf("broad container must NOT be deletable whole: %s", p))
+	}
+}
+
+@(test)
 test_safe_delete_refuses_unsafe :: proc(t: ^testing.T) {
 	freed, err := safe_delete("/etc/hosts")
 	testing.expect_value(t, freed, i64(0))
@@ -80,14 +114,49 @@ test_wildcard_root_rejects_sibling_under_app_support :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_wildcard_root_rejects_root_itself :: proc(t: ^testing.T) {
+test_wildcard_leaf_cache_dir_deletable :: proc(t: ^testing.T) {
 	h := os.get_env("HOME", context.temp_allocator)
 	if h == "" {
 		return
 	}
-	// Matching the wildcard root exactly (no strict-inside) must refuse.
-	p := fmt.aprintf("%s/Library/Application Support/Slack/Cache", h, allocator = context.temp_allocator)
-	testing.expect(t, !is_path_safe(p), "must refuse the wildcard root itself")
+	// The App Caches scanner surfaces these cache dirs themselves (path ==
+	// wildcard pattern). They are leaf caches → must be deletable wholesale.
+	for rel in ([?]string{
+		"/Library/Application Support/discord/Cache",
+		"/Library/Application Support/discord/Code Cache",
+		"/Library/Application Support/discord/GPUCache",
+		"/Library/Application Support/discord/Service Worker/CacheStorage",
+	}) {
+		p := fmt.aprintf("%s%s", h, rel, allocator = context.temp_allocator)
+		testing.expect(t, is_path_safe(p), fmt.tprintf("leaf cache dir must be deletable: %s", p))
+	}
+}
+
+@(test)
+test_wildcard_non_leaf_root_still_refused :: proc(t: ^testing.T) {
+	// Non-leaf wildcard root (.Trashes) is still refused at the dir itself;
+	// only entries strictly inside it are allowed.
+	testing.expect(t, !is_path_safe("/Volumes/MyDisk/.Trashes"), "must refuse the .Trashes dir itself")
+	testing.expect(t, is_path_safe("/Volumes/MyDisk/.Trashes/501/x"), "must allow entries inside .Trashes")
+}
+
+@(test)
+test_is_path_safe_reviewed :: proc(t: ^testing.T) {
+	h := os.get_env("HOME", context.temp_allocator)
+	if h == "" {
+		return
+	}
+	// A hand-picked large file anywhere under $HOME is deletable when reviewed,
+	// even though it's outside the strict cache allowlist.
+	big := fmt.aprintf("%s/Library/Application Support/Claude/vm_bundles/rootfs.img", h, allocator = context.temp_allocator)
+	testing.expect(t, !is_path_safe(big), "strict allowlist refuses arbitrary app-support files")
+	testing.expect(t, is_path_safe_reviewed(big), "reviewed gate allows hand-picked $HOME files")
+
+	// But never $HOME itself, paths outside $HOME, or protected system paths.
+	testing.expect(t, !is_path_safe_reviewed(h), "must refuse $HOME itself")
+	testing.expect(t, !is_path_safe_reviewed("/System/Library/foo"), "must refuse system paths")
+	testing.expect(t, !is_path_safe_reviewed("/etc/hosts"), "must refuse /etc")
+	testing.expect(t, !is_path_safe_reviewed("/var/big.log"), "must refuse outside $HOME")
 }
 
 @(test)

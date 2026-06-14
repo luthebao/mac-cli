@@ -160,15 +160,6 @@ CATEGORIES := [?]Category{
 		safety_note = "May contain important documents and files",
 	},
 	{
-		id          = .Language_Files,
-		slug        = "language-files",
-		name        = "Language Files",
-		group       = .System_Junk,
-		description = "Unused language localizations in applications",
-		safety      = .Risky,
-		safety_note = "May break apps if you switch system language",
-	},
-	{
 		id          = .Large_Files,
 		slug        = "large-files",
 		name        = "Large Files",
@@ -186,6 +177,9 @@ CATEGORIES := [?]Category{
 		description = "Files with identical content",
 		safety      = .Risky,
 		safety_note = "Review carefully — keeps newest copy by default",
+		// Drillable: each item is a removable duplicate copy (newest is kept),
+		// so the user can press → to review and pick which copies to delete.
+		supports_file_selection = true,
 	},
 }
 

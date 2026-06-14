@@ -15,7 +15,6 @@ CategoryId :: enum {
 	Docker,
 	Ios_Backups,
 	Mail_Attachments,
-	Language_Files,
 	Large_Files,
 	Node_Modules,
 	Duplicates,

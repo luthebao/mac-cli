@@ -68,7 +68,10 @@ PickStatus :: enum {
 // would dangle.
 
 @(private="file") ARGS_CLEAN_INTERACTIVE  := [?]string{"interactive"}
+@(private="file") ARGS_CLEAN_DEEP         := [?]string{"deep"}
 @(private="file") ARGS_CLEAN_UNINSTALL    := [?]string{"uninstall"}
+@(private="file") ARGS_CLEAN_INSIGHTS     := [?]string{"insights"}
+@(private="file") ARGS_CLEAN_MONITOR      := [?]string{"monitor"}
 @(private="file") ARGS_CLEAN_CATEGORIES   := [?]string{"categories"}
 @(private="file") ARGS_CLEAN_HELP         := [?]string{"help"}
 
@@ -132,7 +135,10 @@ clean_backup_tree := []MenuItem{
 @(private="file")
 clean_tree := []MenuItem{
 	{label = "interactive", detail = "scan → select → clean (default)", args = ARGS_CLEAN_INTERACTIVE[:]},
+	{label = "deep",        detail = "deep clean — scan everything",    args = ARGS_CLEAN_DEEP[:]},
 	{label = "uninstall",   detail = "remove apps and their files",     args = ARGS_CLEAN_UNINSTALL[:]},
+	{label = "insights",    detail = "where did my disk space go?",     args = ARGS_CLEAN_INSIGHTS[:]},
+	{label = "monitor",     detail = "live CPU/mem/disk/net dashboard", args = ARGS_CLEAN_MONITOR[:]},
 	{label = "maintenance", detail = "DNS / purgeable / snapshots",     children = clean_maint_tree},
 	{label = "categories",  detail = "list cleanable categories",       args = ARGS_CLEAN_CATEGORIES[:]},
 	{label = "config",      detail = "manage clean config",             children = clean_config_tree},

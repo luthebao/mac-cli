@@ -32,6 +32,8 @@ release:
 test:
 	odin test src/fsx $(ODIN_FLAGS)
 	odin test src/clean/store $(ODIN_FLAGS)
+	odin test src/clean/monitor $(ODIN_FLAGS)
+	odin test src/clean/cmd $(ODIN_FLAGS)
 
 fmt:
 	@command -v odinfmt >/dev/null 2>&1 && odinfmt -w src || echo "odinfmt not installed; skipping"

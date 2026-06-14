@@ -70,6 +70,28 @@ last_char :: proc() -> u8 {
 	return g_last_char
 }
 
+// is_interactive reports whether stdin is a usable TTY (raw mode is available).
+// Probe by entering raw mode and immediately restoring so terminal state stays
+// clean. Callers use this to refuse destructive interactive flows when piped /
+// non-interactive, where confirmation prompts would silently take defaults.
+is_interactive :: proc() -> bool {
+	if !enter_raw() {
+		return false
+	}
+	restore()
+	return true
+}
+
+// poll_key waits up to `timeout_ms` for a keypress. Returns (key, true) if one
+// arrived, or (.Unknown, false) on timeout — letting a refresh loop (e.g.
+// `clean monitor`) redraw on a fixed cadence while staying responsive to 'q'.
+poll_key :: proc(timeout_ms: i32) -> (Key, bool) {
+	if !stdin_has_input(timeout_ms) {
+		return .Unknown, false
+	}
+	return read_key(), true
+}
+
 read_key :: proc() -> Key {
 	buf: [1]u8
 	n, _ := read_stdin(buf[:])

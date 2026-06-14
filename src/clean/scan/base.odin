@@ -132,6 +132,12 @@ clean_items :: proc(
 	sudo_freed: i64 = 0
 	sudo_count: int = 0
 
+	// File-selection categories (Large Files, Duplicate Files, old Downloads)
+	// surface arbitrary files from anywhere under $HOME that the user reviews
+	// and hand-picks. They get the relaxed per-file deletion gate; bulk cache
+	// categories keep the strict allowlist.
+	reviewed := cat.supports_file_selection
+
 	for item in items {
 		if dry_run {
 			res.cleaned_items += 1
@@ -142,7 +148,7 @@ clean_items :: proc(
 		if item.requires_sudo {
 			// Validate now so a buggy scanner can't sneak unsafe paths into
 			// the sudo batch.
-			if !fsx.is_path_safe(item.path) {
+			if !fsx.is_path_safe(item.path) && !(reviewed && fsx.is_path_safe_reviewed(item.path)) {
 				append(&errors, strings.concatenate({"refused (path not safe): ", item.path}, allocator))
 				continue
 			}
@@ -156,7 +162,7 @@ clean_items :: proc(
 		// (Phase 6 wires actual file copy; phase 4 only stages the path.)
 		_ = store.backup_should_skip(item.size)
 
-		freed, derr := fsx.safe_delete(item.path)
+		freed, derr := fsx.safe_delete(item.path, reviewed)
 		switch derr {
 		case .None:
 			res.cleaned_items += 1

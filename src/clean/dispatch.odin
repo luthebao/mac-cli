@@ -31,6 +31,14 @@ dispatch :: proc(args: []string) -> int {
 		return cmd.run_backup(args[1:])
 	case "uninstall":
 		return cmd.run_uninstall(args[1:])
+	case "insights", "analyze":
+		return cmd.run_insights(args[1:])
+	case "monitor", "status":
+		return cmd.run_monitor(args[1:])
+	case "deep":
+		// Deep-clean preset: scan everything (incl. risky) and pre-select the
+		// safe/moderate categories. The sentinel routes into run_interactive.
+		return cmd.run_interactive([]string{"--deep"})
 	case "maintenance":
 		return cmd.run_maintenance(args[1:])
 	case "help", "--help", "-h":
@@ -55,7 +63,7 @@ USAGE
   mac-cli clean <subcommand> [flags]
 
 SUBCOMMANDS
-  uninstall, maintenance, categories, config, backup
+  deep, insights, monitor, uninstall, maintenance, categories, config, backup
 
 Run ` + "`mac-cli help clean`" + ` for full details.
 `)

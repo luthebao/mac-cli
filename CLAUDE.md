@@ -6,12 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `mac-cli` is a single-binary macOS utility written in Odin. Apple Silicon (arm64) only. Three workhorse subcommands plus a self-updater: `clean`, `clop`, `shot`, `update`.
 
+The `clean` command is itself a small toolkit: `interactive` (scan→select→clean), `deep` (scan-everything preset), `uninstall` (bundle-id-aware app removal), `insights` (disk-usage analyzer), `monitor` (live system dashboard), plus `maintenance`, `categories`, `config`, `backup`.
+
 ## Build / test / run
 
 ```bash
 make build                           # → build/mac-cli (debug)
 make release                         # → build/mac-cli-vX.Y.Z-darwin-arm64.tar.gz
-make test                            # runs odin test for fsx + clean/store
+make test                            # odin test for fsx, clean/store, clean/monitor, clean/cmd
 make build VERSION=0.2.0-dev         # override embedded version
 ```
 
@@ -50,7 +52,23 @@ src/util/                   color, clipboard, small text helpers
 
 Every top-level command (`clean`, `clop`, `shot`, `update`) exposes a `dispatch :: proc(args: []string) -> int`. Exit codes are propagated to `os.exit` by `main.odin`. The dispatch is the routing layer; the per-mode logic lives in sibling files (`cmd_*`, `run_*`).
 
-Inside `clean`, the same pattern repeats: `clean.dispatch` routes to `clean/cmd/run_<name>` procs (config, backup, maintenance, uninstall, categories, interactive), each of which is itself a sub-dispatcher.
+Inside `clean`, the same pattern repeats: `clean.dispatch` routes to `clean/cmd/run_<name>` procs (config, backup, maintenance, uninstall, insights, monitor, categories, interactive), each of which is itself a sub-dispatcher. `deep` is a sentinel that re-enters `run_interactive` with `--deep` (scan everything incl. risky; pre-select safe/moderate). `analyze`/`status` are accepted as aliases for `insights`/`monitor`.
+
+The heavy logic for the two newer features lives in dedicated sub-packages so it's testable apart from the TUI/IO:
+
+- `src/clean/insights/` — directory + file size ranking (one `du -k -d 1` for child sizes, a directory read for top-level files, `find … -size +100000k` for largest files) and "hidden space" detection (caches, iOS backups, old downloads). `cmd/insights.odin` renders the bar-chart report.
+- `src/clean/monitor/` — `collect()` gathers CPU/memory/disk/network/power by shelling out to native macOS tools (`sysctl`, `vm_stat`, `df`, `netstat -ibn`, `ps`, `pmset`, `sw_vers`); `render()` builds the dashboard; `health.odin` holds the tunable health-score policy. `cmd/monitor.odin` drives the alt-screen 1s refresh loop. NB: pass `-n` to `netstat` — without it, name resolution stalls ~5s when stdout is a pipe.
+
+The destructive scan→clean flow (`interactive`/`deep`) is gated on `tui.is_interactive()`: when stdin isn't a TTY it refuses to run, because confirmation prompts silently take their defaults and `deep` arrives with rows pre-selected. Live/refreshing views use `tui.enter_alt`/`leave_alt` + `tui.poll_key(timeout)`.
+
+### Deletion safety (`fsx/delete.odin`) — two tiers
+
+`safe_delete` enforces an allowlist; understand the tiers before adding scanners:
+
+- **Strict (`is_path_safe`)** — the default for bulk/automated cache categories. A path must sit under a `SAFE_ROOTS` prefix (`*` = one segment). `SAFE_ROOTS` are *contents-only* (deleting the root dir itself is refused) **unless** also listed in `SAFE_LEAF_ROOTS` — pure regenerable caches (Xcode DerivedData, `.cargo/registry`, the `…/*/Cache` Electron dirs, …) that may be deleted wholesale. `DANGER_PATHS` always wins.
+- **Reviewed (`is_path_safe_reviewed`)** — for the file-selection categories (`supports_file_selection = true`: Large Files, Duplicate Files, old Downloads), which surface arbitrary files from anywhere under `$HOME`. `clean_items` passes `reviewed = cat.supports_file_selection` to `safe_delete`; reviewed paths are accepted if they're absolute, strictly inside `$HOME`, and not under a `DANGER_PATH`. This is additive — it never loosens the strict tier for bulk categories.
+
+A common symptom of getting this wrong is a scanner surfacing a path that `safe_delete` then refuses with "refused (path not safe)" — meaning the scanner and the allowlist disagree. Fix the allowlist (leaf root / reviewed flag), don't weaken `DANGER_PATHS`.
 
 ### TUI menu system (`cli/menu.odin`)
 

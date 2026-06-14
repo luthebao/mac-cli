@@ -16,6 +16,7 @@ import "mc:util"
 run_interactive :: proc(args: []string) -> int {
 	spec := []cli.Flag{
 		{name = "risky",          short = "r", takes_value = false},
+		{name = "deep",           takes_value = false},
 		{name = "file-picker",    short = "f", takes_value = false},
 		{name = "absolute-paths", short = "A", takes_value = false},
 		{name = "no-progress",    takes_value = false},
@@ -29,11 +30,27 @@ run_interactive :: proc(args: []string) -> int {
 		return 0
 	}
 
-	include_risky := cli.bool_flag(p, "risky")
+	// The scan→select→clean flow is destructive and relies on interactive
+	// confirmation. Without a TTY those prompts silently take their defaults —
+	// and in --deep mode rows arrive pre-selected — so refuse to proceed rather
+	// than risk an unattended deletion. `clean categories` is the safe,
+	// non-interactive way to see what would be scanned.
+	if !tui.is_interactive() {
+		fmt.println(util.dim("clean: interactive cleanup needs a terminal. Run it directly in a shell, or use `mac-cli clean categories` to preview categories."))
+		return 0
+	}
+
+	// Deep mode is the "scan everything" preset: it pulls in the risky
+	// scanners too, and pre-selects every safe/moderate category so the user
+	// just reviews and confirms instead of hand-picking. Risky categories are
+	// shown but left unchecked — deep should be thorough, not reckless.
+	deep          := cli.bool_flag(p, "deep")
+	include_risky := cli.bool_flag(p, "risky") || deep
 	dry_run       := cli.bool_flag(p, "dry-run")
 
 	scanners := scan.scanners_for(include_risky, context.temp_allocator)
-	fmt.println(util.bold("🧹 mac-cli clean"))
+	title := deep ? "🧹 mac-cli clean (deep)" : "🧹 mac-cli clean"
+	fmt.println(util.bold(title))
 	fmt.println(strings.repeat("─", 50, context.temp_allocator))
 	fmt.println("Scanning your Mac for cleanable files…")
 	fmt.println()
@@ -66,6 +83,8 @@ run_interactive :: proc(args: []string) -> int {
 			hint           = hint,
 			supports_drill = r.category.supports_file_selection || cli.bool_flag(p, "file-picker"),
 			disabled       = r.total_size == 0,
+			// Deep mode pre-checks everything safe enough to bulk-clean.
+			selected       = deep && r.total_size > 0 && r.category.safety != .Risky,
 		}
 	}
 
