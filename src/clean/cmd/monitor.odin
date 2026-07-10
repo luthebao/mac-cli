@@ -38,18 +38,14 @@ it prints a single snapshot instead of the live view.
 	}
 
 	if cli.bool_flag(p, "json") {
-		s := monitor.collect(context.temp_allocator)
-		s.health = monitor.compute_health_score(s)
-		print_json(s)
+		print_json(one_shot_snapshot())
 		return 0
 	}
 
 	// Live view requires raw-mode stdin. If we can't get it (piped / non-TTY),
 	// degrade to a single rendered snapshot so the command still does something.
 	if !tui.enter_raw() {
-		s := monitor.collect(context.temp_allocator)
-		s.health = monitor.compute_health_score(s)
-		fmt.print(monitor.render(s, context.temp_allocator))
+		fmt.print(monitor.render(one_shot_snapshot(), context.temp_allocator))
 		return 0
 	}
 	tui.enter_alt()
@@ -85,19 +81,45 @@ it prints a single snapshot instead of the live view.
 		prev_tick = now
 		have_prev = true
 
-		k, ok := tui.poll_key(REFRESH_MS)
-		if !ok {
-			continue // timeout → redraw
-		}
-		#partial switch k {
-		case .Esc, .Ctrl_C, .Ctrl_D:
-			return 0
-		case .Char:
-			if tui.last_char() == 'q' || tui.last_char() == 'Q' {
-				return 0
+		// Drain input until the refresh deadline. Ignored keys must NOT fall
+		// through to an early re-collect: a few-ms elapsed would divide the
+		// network byte delta by a near-zero denominator and spike the rate
+		// display (and spawn a whole extra round of subprocesses per press).
+		poll_start := time.tick_now()
+		remaining: i32 = REFRESH_MS
+		for remaining > 0 {
+			k, ok := tui.poll_key(remaining)
+			if !ok {
+				break // timeout → redraw
 			}
+			#partial switch k {
+			case .Esc, .Ctrl_C, .Ctrl_D:
+				return 0
+			case .Char:
+				if tui.last_char() == 'q' || tui.last_char() == 'Q' {
+					return 0
+				}
+			}
+			waited := i32(time.duration_milliseconds(time.tick_diff(poll_start, time.tick_now())))
+			remaining = REFRESH_MS - waited
 		}
 	}
+}
+
+// one_shot_snapshot collects a snapshot for the --json / non-TTY paths.
+// Network rates only exist as the diff of two samples, so it takes a second
+// reading ~500ms after the first — a single sample would structurally report
+// 0 B/s regardless of actual traffic.
+@(private="file")
+one_shot_snapshot :: proc() -> monitor.Snapshot {
+	prev := monitor.collect(context.temp_allocator)
+	t0 := time.tick_now()
+	time.sleep(500 * time.Millisecond)
+	s := monitor.collect(context.temp_allocator)
+	elapsed := time.duration_seconds(time.tick_diff(t0, time.tick_now()))
+	monitor.rates_from(&s, prev, elapsed)
+	s.health = monitor.compute_health_score(s)
+	return s
 }
 
 // print_json emits a single snapshot as JSON for `--json` / piped use. Written

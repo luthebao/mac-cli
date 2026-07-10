@@ -54,17 +54,8 @@ dispatch :: proc(args: []string) -> int {
 	}
 }
 
+// print_clean_help delegates to the shared help text in mc:cli so there is
+// exactly one source of truth (local copies had already drifted from it).
 print_clean_help :: proc() {
-	fmt.print(
-`mac-cli clean — disk cleaner for macOS
-
-USAGE
-  mac-cli clean [flags]
-  mac-cli clean <subcommand> [flags]
-
-SUBCOMMANDS
-  deep, insights, monitor, uninstall, maintenance, categories, config, backup
-
-Run ` + "`mac-cli help clean`" + ` for full details.
-`)
+	cli.print_help("clean")
 }

@@ -136,6 +136,7 @@ HTTPStorages, Cookies, and LaunchAgents for matching leftovers.
 		return 0
 	}
 
+	failed := 0
 	for row, i in rows {
 		if !row.selected {
 			continue
@@ -146,11 +147,22 @@ HTTPStorages, Cookies, and LaunchAgents for matching leftovers.
 			// bundles. Leftover support-files paths under ~/Library
 			// pass through safe_delete normally.
 			if strings.has_prefix(path, "/Applications/") {
-				_ = os.remove_all(path)
+				if rerr := os.remove_all(path); rerr != nil {
+					failed += 1
+					fmt.printfln("  %s %s", util.yellow("✗ could not remove:", context.temp_allocator), path)
+				}
 			} else {
-				_, _ = fsx.safe_delete(path)
+				if _, derr := fsx.safe_delete(path); derr != .None && derr != .Path_Not_Found {
+					failed += 1
+					fmt.printfln("  %s %s", util.yellow("✗ could not remove:", context.temp_allocator), path)
+				}
 			}
 		}
+	}
+	if failed > 0 {
+		fmt.printfln("%s — %d item(s) left on disk (permissions? try removing them in Finder or with sudo)",
+			util.yellow("⚠ Uninstall finished with errors", context.temp_allocator), failed)
+		return 1
 	}
 	fmt.println(util.green("✓ Uninstall complete"))
 	return 0

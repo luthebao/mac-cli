@@ -10,11 +10,12 @@ import "mc:sysx"
 // usage. Cleaning it shells out to `docker system prune`.
 docker_scan :: proc(_: types.ScannerOptions, allocator: runtime.Allocator) -> types.ScanResult {
 	cat := types.category_of(.Docker)
-	res := sysx.run_capture({"/usr/local/bin/docker", "system", "df"}, context.temp_allocator)
-	if !res.ok {
-		res = sysx.run_capture({"docker", "system", "df"}, context.temp_allocator)
+	docker := find_docker()
+	res: sysx.RunResult
+	if docker != "" {
+		res = sysx.run_capture({docker, "system", "df"}, context.temp_allocator)
 	}
-	if !res.ok {
+	if docker == "" || !res.ok {
 		return types.ScanResult{
 			category = cat,
 			error    = "docker not available",
@@ -28,19 +29,31 @@ docker_scan :: proc(_: types.ScannerOptions, allocator: runtime.Allocator) -> ty
 			continue
 		}
 		fields := strings.fields(line, context.temp_allocator)
-		if len(fields) == 0 {
+		// The RECLAIMABLE column renders as "16.43MB (70%)" — and some Docker
+		// versions put a space between value and unit ("16.43 MB (70%)").
+		// Drop the trailing percentage token, then try the last token alone
+		// and joined with its neighbor so both spellings parse.
+		n := len(fields)
+		for n > 0 && strings.has_prefix(fields[n-1], "(") {
+			n -= 1
+		}
+		if n == 0 {
 			continue
 		}
-		last := fields[len(fields)-1]
-		if b, ok := parse_size_token(last); ok {
+		if b, ok := parse_size_token(fields[n-1]); ok {
 			reclaimable += b
+		} else if n >= 2 {
+			joined := strings.concatenate({fields[n-2], fields[n-1]}, context.temp_allocator)
+			if jb, jok := parse_size_token(joined); jok {
+				reclaimable += jb
+			}
 		}
 	}
 
 	items := make([]types.CleanableItem, 1, allocator)
 	items[0] = types.CleanableItem{
 		path         = strings.clone("docker://prune", allocator),
-		name         = strings.clone("Reclaimable images/containers/volumes", allocator),
+		name         = strings.clone("Reclaimable images/containers/build cache", allocator),
 		size         = reclaimable,
 		is_directory = false,
 	}
@@ -64,18 +77,32 @@ docker_clean :: proc(items: []types.CleanableItem, dry_run: bool, allocator: run
 			freed_bytes   = freed,
 		}
 	}
-	if !sysx.run_quiet({"/usr/local/bin/docker", "system", "prune", "-af", "--volumes"}) {
-		if !sysx.run_quiet({"docker", "system", "prune", "-af", "--volumes"}) {
-			errs := make([]string, 1, allocator)
-			errs[0] = strings.clone("docker prune failed", allocator)
-			return types.CleanResult{ category = cat, errors = errs }
-		}
+	// NB: no --volumes — named volumes hold real user data (databases of
+	// stopped compose projects, …) and must never be pruned by a cleaner.
+	docker := find_docker()
+	if docker == "" || !sysx.run_quiet({docker, "system", "prune", "-af"}) {
+		errs := make([]string, 1, allocator)
+		errs[0] = strings.clone("docker prune failed", allocator)
+		return types.CleanResult{ category = cat, errors = errs }
 	}
 	return types.CleanResult{
 		category      = cat,
 		cleaned_items = 1,
 		freed_bytes   = freed,
 	}
+}
+
+// find_docker locates the docker CLI: Docker Desktop's symlink first, then
+// whatever is on $PATH. Returns "" when neither responds.
+@(private)
+find_docker :: proc() -> string {
+	if sysx.run_capture({"/usr/local/bin/docker", "--version"}, context.temp_allocator).ok {
+		return "/usr/local/bin/docker"
+	}
+	if sysx.run_capture({"docker", "--version"}, context.temp_allocator).ok {
+		return "docker"
+	}
+	return ""
 }
 
 @(private)

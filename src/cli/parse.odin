@@ -70,9 +70,16 @@ parse :: proc(args: []string, spec: []Flag, allocator := context.allocator) -> (
 			short := a[1:]
 			for f in spec {
 				if f.short == short {
-					if f.takes_value && i+1 < len(args) {
-						out.values[f.name] = args[i+1]
-						i += 1
+					if f.takes_value {
+						if i+1 < len(args) {
+							out.values[f.name] = args[i+1]
+							i += 1
+						} else {
+							// Trailing `-x` with the value forgotten — record it
+							// as empty (same as the long-flag path) so callers see
+							// a missing value, not the literal string "true".
+							out.values[f.name] = ""
+						}
 					} else {
 						out.values[f.name] = "true"
 					}

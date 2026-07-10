@@ -83,8 +83,9 @@ CATEGORIES := [?]Category{
 		slug        = "docker",
 		name        = "Docker",
 		group       = .Development,
-		description = "Unused Docker images, containers, and volumes",
-		safety      = .Safe,
+		description = "Unused Docker images, stopped containers, build cache",
+		safety      = .Risky,
+		safety_note = "Runs `docker system prune -af`: removes ALL images not used by a running container — they must be re-pulled or rebuilt",
 	},
 	{
 		id          = .System_Cache,
@@ -121,6 +122,10 @@ CATEGORIES := [?]Category{
 		description = "Orphaned node_modules in old projects",
 		safety      = .Moderate,
 		safety_note = "Projects will need npm install to restore",
+		// Surfaces arbitrary project dirs under $HOME, which the strict
+		// SAFE_ROOTS allowlist (rightly) refuses — deletion must go through
+		// the reviewed tier, same trust model as Large Files/Duplicates.
+		supports_file_selection = true,
 	},
 	{
 		id          = .Launch_Agents,

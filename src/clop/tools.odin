@@ -1,9 +1,6 @@
 package clop
 
-import "core:fmt"
-
 import "mc:sysx"
-import "mc:util"
 
 // Tool is one external CLI we shell out to. `bin` is the command we'll
 // exec (looked up on $PATH via `which`); `brew_pkg` is the Homebrew formula
@@ -62,12 +59,17 @@ ensure_tool :: proc(t: Tool) -> bool {
 	return ensure_tools(tools[:])
 }
 
-// brew_hint_line is the legacy "brew install X" hint used by code paths
-// that opt out of the prompt UX (e.g. when we already know we'll abort).
-brew_hint_line :: proc(t: Tool) {
-	fmt.eprintln(util.yellow(
-		fmt.tprintf("mac-cli clop: %q not found on $PATH", t.bin),
-		context.temp_allocator,
-	))
-	fmt.eprintfln("  install with: brew install %s", t.brew_pkg)
+// available_tools offers one combined brew-install prompt for whatever is
+// missing from `needed`, then probes each distinct tool once and returns
+// bin → present. Callers use the map to skip individual files whose tool is
+// unavailable — a declined install for one format must not abort the
+// formats whose tools ARE ready.
+available_tools :: proc(needed: []Tool) -> map[string]bool {
+	_ = ensure_tools(needed)
+	avail := make(map[string]bool, len(needed), context.temp_allocator)
+	for t in needed {
+		if t.bin in avail { continue }
+		avail[t.bin] = tool_present(t)
+	}
+	return avail
 }

@@ -41,6 +41,9 @@ launch_agents_scan :: proc(_: types.ScannerOptions, allocator: runtime.Allocator
 				size              = e.size,
 				is_directory      = false,
 				modification_time = e.modification_time,
+				// /Library/LaunchAgents is root-owned; deleting there needs
+				// the batched sudo path, same as system_cache_root.
+				requires_sudo     = root == "/Library/LaunchAgents",
 			})
 			total += e.size
 		}

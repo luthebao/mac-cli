@@ -28,7 +28,8 @@ run_maintenance :: proc(args: []string) -> int {
 USAGE
   mac-cli clean maintenance --dns          Flush DNS cache (uses sudo)
   mac-cli clean maintenance --purgeable    Thin Time Machine local snapshots
-  mac-cli clean maintenance --timemachine  List + delete local TM snapshots
+  mac-cli clean maintenance --timemachine  List local TM snapshots (read-only;
+                                           use --purgeable to thin them)
 `)
 		return 0
 	}
@@ -55,7 +56,7 @@ USAGE
 		fmt.println(util.bold("→ Listing Time Machine local snapshots"))
 		r := sysx.run_capture({"/usr/bin/tmutil", "listlocalsnapshots", "/"}, context.temp_allocator)
 		if !r.ok {
-			fmt.println(util.yellow("  could not list snapshots"))
+			fmt.println(util.yellow("  could not list snapshots", context.temp_allocator))
 		} else {
 			fmt.println(r.stdout)
 		}

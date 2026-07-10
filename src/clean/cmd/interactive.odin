@@ -6,6 +6,7 @@ import "core:thread"
 
 import "mc:cli"
 import "mc:clean/scan"
+import "mc:clean/store"
 import "mc:clean/tui"
 import "mc:clean/types"
 import "mc:fsx"
@@ -40,13 +41,20 @@ run_interactive :: proc(args: []string) -> int {
 		return 0
 	}
 
+	// Persisted config (~/.mac-cli/clean/config.json) supplies the defaults;
+	// explicit flags can only turn behavior ON, never override config to off.
+	cfg := store.load_config()
+
 	// Deep mode is the "scan everything" preset: it pulls in the risky
 	// scanners too, and pre-selects every safe/moderate category so the user
 	// just reviews and confirms instead of hand-picking. Risky categories are
 	// shown but left unchecked — deep should be thorough, not reckless.
 	deep          := cli.bool_flag(p, "deep")
-	include_risky := cli.bool_flag(p, "risky") || deep
+	include_risky := cli.bool_flag(p, "risky") || deep || cfg.include_risky
 	dry_run       := cli.bool_flag(p, "dry-run")
+	file_picker   := cli.bool_flag(p, "file-picker") || cfg.file_picker
+	absolute      := cli.bool_flag(p, "absolute-paths") || cfg.absolute_paths
+	progress      := !cli.bool_flag(p, "no-progress")
 
 	scanners := scan.scanners_for(include_risky, context.temp_allocator)
 	title := deep ? "🧹 mac-cli clean (deep)" : "🧹 mac-cli clean"
@@ -56,7 +64,7 @@ run_interactive :: proc(args: []string) -> int {
 	fmt.println()
 
 	// Parallel scan via thread pool — total time ~= slowest scanner.
-	results := parallel_scan(scanners)
+	results := parallel_scan(scanners, cfg)
 
 	total: i64 = 0
 	for r in results {
@@ -81,7 +89,7 @@ run_interactive :: proc(args: []string) -> int {
 		rows[i] = tui.CheckboxItem{
 			label          = label,
 			hint           = hint,
-			supports_drill = r.category.supports_file_selection || cli.bool_flag(p, "file-picker"),
+			supports_drill = r.category.supports_file_selection || file_picker,
 			disabled       = r.total_size == 0,
 			// Deep mode pre-checks everything safe enough to bulk-clean.
 			selected       = deep && r.total_size > 0 && r.category.safety != .Risky,
@@ -102,7 +110,7 @@ run_interactive :: proc(args: []string) -> int {
 			fmt.println(util.dim("Cancelled."))
 			return 0
 		case .Drill_Down:
-			selected, cancelled := tui.explore(results[drill].category.name, working_items[drill])
+			selected, cancelled := tui.explore(results[drill].category.name, working_items[drill], absolute)
 			if cancelled {
 				continue outer
 			}
@@ -160,7 +168,9 @@ run_interactive :: proc(args: []string) -> int {
 	// Execute cleans.
 	fmt.println()
 	bar: tui.ProgressBar
-	tui.progress_start(&bar, picked_items, "Cleaning")
+	if progress {
+		tui.progress_start(&bar, picked_items, "Cleaning")
+	}
 	cleaned_results := make([]types.CleanResult, len(results), context.temp_allocator)
 	for row, i in rows {
 		if !row.selected {
@@ -168,9 +178,13 @@ run_interactive :: proc(args: []string) -> int {
 		}
 		scanner := scanners[i]
 		cleaned_results[i] = scanner.clean(working_items[i], dry_run, context.temp_allocator)
-		tui.progress_advance(&bar, len(working_items[i]))
+		if progress {
+			tui.progress_advance(&bar, len(working_items[i]))
+		}
 	}
-	tui.progress_finish(&bar)
+	if progress {
+		tui.progress_finish(&bar)
+	}
 
 	// Final report.
 	fmt.println()
@@ -198,14 +212,12 @@ run_interactive :: proc(args: []string) -> int {
 	return 0
 }
 
-// parallel_scan runs all scanners concurrently via core:thread.Pool.
+// parallel_scan runs all scanners concurrently via core:thread.Pool — total
+// time ~= the slowest scanner, since most are I/O-bound.
 @(private)
-parallel_scan :: proc(scanners: []types.Scanner) -> []types.ScanResult {
+parallel_scan :: proc(scanners: []types.Scanner, cfg: store.Config) -> []types.ScanResult {
 	results := make([]types.ScanResult, len(scanners), context.allocator)
 
-	// Sequential fallback for environments without thread support.
-	// Using thread.Pool would also work but adds complexity for marginal
-	// gain — most scanners are I/O-bound and the OS already overlaps them.
 	pool: thread.Pool
 	thread.pool_init(&pool, allocator = context.allocator, thread_count = 8)
 	defer thread.pool_destroy(&pool)
@@ -213,15 +225,22 @@ parallel_scan :: proc(scanners: []types.Scanner) -> []types.ScanResult {
 
 	Task_Data :: struct {
 		scanner: types.Scanner,
+		opts:    types.ScannerOptions,
 		result:  ^types.ScanResult,
 	}
 	task_data := make([]Task_Data, len(scanners), context.temp_allocator)
 
 	for s, i in scanners {
-		task_data[i] = Task_Data{scanner = s, result = &results[i]}
+		// min_size means something different per scanner (duplicate threshold
+		// vs large-file threshold), so config only feeds it where it applies.
+		opts := types.ScannerOptions{days_old = cfg.downloads_days}
+		if s.category.id == .Duplicates {
+			opts.min_size = cfg.min_duplicate_size
+		}
+		task_data[i] = Task_Data{scanner = s, opts = opts, result = &results[i]}
 		thread.pool_add_task(&pool, context.allocator, proc(task: thread.Task) {
 			td := cast(^Task_Data)task.data
-			td.result^ = td.scanner.scan({}, context.allocator)
+			td.result^ = td.scanner.scan(td.opts, context.allocator)
 		}, &task_data[i], i)
 	}
 	thread.pool_finish(&pool)

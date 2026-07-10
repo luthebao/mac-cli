@@ -30,8 +30,8 @@ classify :: proc(path: string) -> Kind {
 	return .Unsupported
 }
 
-// is_image / is_video / is_pdf are convenience predicates for op handlers
-// that only accept a subset (e.g. -c convert is image-only).
+// is_image / is_video are convenience predicates for op handlers that only
+// accept a subset (e.g. -c convert is image-only).
 is_image :: proc(k: Kind) -> bool {
 	#partial switch k {
 	case .Png, .Jpeg, .Gif: return true
@@ -44,8 +44,4 @@ is_video :: proc(k: Kind) -> bool {
 	case .Mp4, .Mov: return true
 	}
 	return false
-}
-
-is_pdf :: proc(k: Kind) -> bool {
-	return k == .Pdf
 }

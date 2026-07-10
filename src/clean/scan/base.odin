@@ -132,10 +132,10 @@ clean_items :: proc(
 	sudo_freed: i64 = 0
 	sudo_count: int = 0
 
-	// File-selection categories (Large Files, Duplicate Files, old Downloads)
-	// surface arbitrary files from anywhere under $HOME that the user reviews
-	// and hand-picks. They get the relaxed per-file deletion gate; bulk cache
-	// categories keep the strict allowlist.
+	// File-selection categories (Large Files, Duplicate Files, old Downloads,
+	// Node Modules) surface arbitrary paths from anywhere under $HOME that the
+	// user reviews and hand-picks. They get the relaxed per-file deletion gate;
+	// bulk cache categories keep the strict allowlist.
 	reviewed := cat.supports_file_selection
 
 	for item in items {

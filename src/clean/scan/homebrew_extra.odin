@@ -113,7 +113,7 @@ homebrew_autoremove_clean :: proc(items: []types.CleanableItem, dry_run: bool, a
 	return res
 }
 
-@(private="file")
+@(private)
 find_brew :: proc() -> string {
 	r := sysx.run_capture({"/opt/homebrew/bin/brew", "--version"}, context.temp_allocator)
 	if r.ok {

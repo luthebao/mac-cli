@@ -1,6 +1,5 @@
 package update
 
-import "core:c/libc"
 import "core:fmt"
 import "core:strings"
 
@@ -68,11 +67,23 @@ dispatch :: proc(args: []string, current_version: string) -> int {
 	fmt.printfln("Updating mac-cli %s -> %s", current_version, latest)
 	fmt.printfln("Running: curl -fsSL %s | bash", INSTALL_URL)
 
-	shell_cmd := fmt.tprintf("curl -fsSL %s | bash", INSTALL_URL)
-	cstr := strings.clone_to_cstring(shell_cmd, context.temp_allocator)
-	rc := libc.system(cstr)
-	if rc != 0 {
-		fmt.eprintfln("mac-cli update: installer exited with status %d", rc)
+	// The command string is a compile-time constant (no interpolated user
+	// input) and runs through sysx like every other subprocess. pipefail is
+	// essential: without it a failed download (DNS error, 404, offline) hands
+	// bash an empty script that exits 0, and the "update" reports success
+	// while the binary was never touched.
+	r := sysx.run(
+		{"/bin/bash", "-o", "pipefail", "-c", "curl -fsSL " + INSTALL_URL + " | bash"},
+		context.temp_allocator,
+	)
+	if out := strings.trim_space(r.stdout); out != "" {
+		fmt.println(out)
+	}
+	if !r.ok {
+		if errout := strings.trim_space(r.stderr); errout != "" {
+			fmt.eprintln(errout)
+		}
+		fmt.eprintfln("mac-cli update: installer failed (exit status %d)", r.exit_code)
 		return 1
 	}
 	return 0
@@ -106,22 +117,8 @@ resolve_latest_version :: proc() -> (string, bool) {
 	return strings.clone(tag), true
 }
 
+// print_update_help delegates to the shared help text in mc:cli so there is
+// exactly one source of truth (the local copy had already drifted from it).
 print_update_help :: proc() {
-	fmt.print(
-`mac-cli update — pull the latest release binary
-
-USAGE
-  mac-cli update              Check for a new release; install it if found.
-  mac-cli update --check      Only report whether a newer release exists.
-                              Exits non-zero when an update is available.
-  mac-cli update --force      Re-run the installer even if already current.
-
-ENVIRONMENT
-  PREFIX=<dir>                Install dir for the new binary
-                              (forwarded to the install script).
-  VERSION=<x.y.z>             Pin a specific release instead of latest.
-
-The installer is fetched from:
-  ` + INSTALL_URL + `
-`)
+	cli.print_help("update")
 }

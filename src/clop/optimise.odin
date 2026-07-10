@@ -25,15 +25,29 @@ run_optimise :: proc(opts: Options) -> int {
 
 	// Pre-flight: probe tool availability based on what extensions we found,
 	// so the user sees one "brew install" hint instead of N per-file errors.
-	if !preflight_optimise(files) {
-		return 1
+	// Files whose tool is still missing afterwards are skipped individually —
+	// one absent tool (say ffmpeg for a stray .mp4) must not abort the whole
+	// batch of formats that are ready to go.
+	needed := make([dynamic]Tool, 0, 4, context.temp_allocator)
+	for f in files {
+		if t, has_tool := tool_for_optimise(classify(f)); has_tool {
+			append(&needed, t)
+		}
 	}
+	avail := available_tools(needed[:])
 
 	preset := pick_preset(opts.aggressive)
 	processed, skipped, failed := 0, 0, 0
 
 	for path in files {
 		kind := classify(path)
+		if t, has_tool := tool_for_optimise(kind); has_tool && !avail[t.bin] {
+			fmt.eprintfln("  %s  %s",
+				util.dim("skip", context.temp_allocator),
+				util.dim(fmt.tprintf("%s (%s not installed)", path, t.bin), context.temp_allocator))
+			skipped += 1
+			continue
+		}
 		ok_file := false
 		#partial switch kind {
 		case .Png:                 ok_file = optimise_png(path, preset, opts.keep_orig)
@@ -61,22 +75,16 @@ run_optimise :: proc(opts: Options) -> int {
 	return 0 if failed == 0 else 1
 }
 
-// preflight_optimise collects the union of tools required by the input
-// mix and offers them to ensure_tools in one shot. That keeps the user
-// experience to a single "install missing tools?" prompt regardless of
-// how many formats are in the directory.
+// tool_for_optimise maps a file kind to the CLI tool -o needs for it.
 @(private)
-preflight_optimise :: proc(files: []string) -> bool {
-	needed := make([dynamic]Tool, 0, 4, context.temp_allocator)
-	for f in files {
-		#partial switch classify(f) {
-		case .Png:        append(&needed, PNGQUANT)
-		case .Jpeg:       append(&needed, JPEGOPTIM)
-		case .Gif:        append(&needed, GIFSICLE)
-		case .Mp4, .Mov:  append(&needed, FFMPEG)
-		}
+tool_for_optimise :: proc(k: Kind) -> (Tool, bool) {
+	#partial switch k {
+	case .Png:       return PNGQUANT, true
+	case .Jpeg:      return JPEGOPTIM, true
+	case .Gif:       return GIFSICLE, true
+	case .Mp4, .Mov: return FFMPEG, true
 	}
-	return ensure_tools(needed[:])
+	return {}, false
 }
 
 // optimise_png:  pngquant --force --quality {min-max} --ext .png {path}
@@ -226,10 +234,13 @@ report_done :: proc(path: string) {
 	if before > 0 {
 		pct = int(100 - (after * 100 / before))
 	}
+	// pct can be negative when the "optimized" output grew (pngquant --force
+	// et al. overwrite even then) — show "(+N%)", not the garbled "(--N%)".
+	delta := pct >= 0 ? fmt.tprintf("(-%d%%)", pct) : fmt.tprintf("(+%d%%)", -pct)
 	fmt.printfln("  %s  %s  %s",
 		util.green("done", context.temp_allocator),
 		path,
-		util.dim(fmt.tprintf("(-%d%%)", pct), context.temp_allocator))
+		util.dim(delta, context.temp_allocator))
 }
 
 // size_pair reads the post-op file size paired with the size of the .orig

@@ -62,13 +62,13 @@ print_welcome :: proc(version: string) {
 	)
 
 	// --- Body rows ---
-	cwd_meta := fmt.aprintf("%s  ·  %s", util.dim(cwd), util.dim(arch), allocator = context.temp_allocator)
+	cwd_meta := fmt.aprintf("%s  ·  %s", util.dim(cwd, context.temp_allocator), util.dim(arch, context.temp_allocator), allocator = context.temp_allocator)
 
 	rows := []string{
 		"",
 		center("💻", inner, context.temp_allocator),
 		"",
-		center(fmt.aprintf("Welcome back, %s!", util.bold(user), allocator = context.temp_allocator), inner, context.temp_allocator),
+		center(fmt.aprintf("Welcome back, %s!", util.bold(user, context.temp_allocator), allocator = context.temp_allocator), inner, context.temp_allocator),
 		center(cwd_meta, inner, context.temp_allocator),
 		"",
 		indent("• mac-cli clean       reclaim disk space", inner),
@@ -213,7 +213,15 @@ rune_cells :: proc(r: rune) -> int {
 abbreviate_home :: proc(p: string, allocator := context.allocator) -> string {
 	home := os.get_env("HOME", context.temp_allocator)
 	if home != "" && strings.has_prefix(p, home) {
-		return strings.concatenate({"~", p[len(home):]}, allocator)
+		// Only abbreviate $HOME itself or paths inside it — a bare prefix
+		// match would turn the sibling /Users/maxwell into "~well" for
+		// HOME=/Users/max.
+		if len(p) == len(home) {
+			return strings.clone("~", allocator)
+		}
+		if p[len(home)] == '/' {
+			return strings.concatenate({"~", p[len(home):]}, allocator)
+		}
 	}
 	return strings.clone(p, allocator)
 }

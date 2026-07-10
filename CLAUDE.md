@@ -41,7 +41,7 @@ src/shot/                   screenshots
 src/update/                 self-updater (curl-pipes install.sh)
 src/fsx/                    filesystem helpers (paths, sizes, deletes)
 src/sysx/                   subprocess helpers (run_capture, run_quiet)
-src/util/                   color, clipboard, small text helpers
+src/util/                   color, small text helpers
 ```
 
 ### Import direction
@@ -66,7 +66,9 @@ The destructive scan→clean flow (`interactive`/`deep`) is gated on `tui.is_int
 `safe_delete` enforces an allowlist; understand the tiers before adding scanners:
 
 - **Strict (`is_path_safe`)** — the default for bulk/automated cache categories. A path must sit under a `SAFE_ROOTS` prefix (`*` = one segment). `SAFE_ROOTS` are *contents-only* (deleting the root dir itself is refused) **unless** also listed in `SAFE_LEAF_ROOTS` — pure regenerable caches (Xcode DerivedData, `.cargo/registry`, the `…/*/Cache` Electron dirs, …) that may be deleted wholesale. `DANGER_PATHS` always wins.
-- **Reviewed (`is_path_safe_reviewed`)** — for the file-selection categories (`supports_file_selection = true`: Large Files, Duplicate Files, old Downloads), which surface arbitrary files from anywhere under `$HOME`. `clean_items` passes `reviewed = cat.supports_file_selection` to `safe_delete`; reviewed paths are accepted if they're absolute, strictly inside `$HOME`, and not under a `DANGER_PATH`. This is additive — it never loosens the strict tier for bulk categories.
+- **Reviewed (`is_path_safe_reviewed`)** — for the file-selection categories (`supports_file_selection = true`: Large Files, Duplicate Files, old Downloads, Node Modules), which surface arbitrary paths from anywhere under `$HOME`. `clean_items` passes `reviewed = cat.supports_file_selection` to `safe_delete`; reviewed paths are accepted if they're absolute, strictly inside `$HOME`, and not under a `DANGER_PATH`. This is additive — it never loosens the strict tier for bulk categories.
+
+Both tiers canonicalize `/var/folders/…` to `/private/var/folders/…` before matching (macOS mounts `/var` as a symlink to `/private/var`); without that, `DANGER_PATHS`' `/var` entry would shadow the temp-files safe root.
 
 A common symptom of getting this wrong is a scanner surfacing a path that `safe_delete` then refuses with "refused (path not safe)" — meaning the scanner and the allowlist disagree. Fix the allowlist (leaf root / reviewed flag), don't weaken `DANGER_PATHS`.
 

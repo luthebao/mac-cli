@@ -23,27 +23,9 @@ run_downscale :: proc(opts: Options) -> int {
 		return 0
 	}
 
-	if !preflight_downscale(files) {
-		return 1
-	}
-
-	processed, skipped, failed := 0, 0, 0
-	for path in files {
-		kind := classify(path)
-		ok_file := false
-		switch {
-		case is_image(kind): ok_file = downscale_image(path, opts.factor, opts.keep_orig)
-		case is_video(kind): ok_file = downscale_video(path, opts.factor, opts.keep_orig)
-		case:                skipped += 1; continue
-		}
-		if ok_file { processed += 1 } else { failed += 1 }
-	}
-	report_summary(processed, skipped, failed)
-	return 0 if failed == 0 else 1
-}
-
-@(private)
-preflight_downscale :: proc(files: []string) -> bool {
+	// One combined brew prompt for whatever is missing; files whose tool is
+	// still missing afterwards are skipped individually so one absent tool
+	// doesn't abort the formats that are ready.
 	needed := make([dynamic]Tool, 0, 3, context.temp_allocator)
 	any_image, any_video := false, false
 	for f in files {
@@ -57,7 +39,29 @@ preflight_downscale :: proc(files: []string) -> bool {
 	if any_video {
 		append(&needed, FFMPEG)
 	}
-	return ensure_tools(needed[:])
+	avail := available_tools(needed[:])
+	images_ok := avail[VIPSTHUMBNAIL.bin] && avail[VIPSHEADER.bin]
+	videos_ok := avail[FFMPEG.bin]
+
+	processed, skipped, failed := 0, 0, 0
+	for path in files {
+		kind := classify(path)
+		ok_file := false
+		switch {
+		case is_image(kind) && !images_ok, is_video(kind) && !videos_ok:
+			fmt.eprintfln("  %s  %s",
+				util.dim("skip", context.temp_allocator),
+				util.dim(fmt.tprintf("%s (required tool not installed)", path), context.temp_allocator))
+			skipped += 1
+			continue
+		case is_image(kind): ok_file = downscale_image(path, opts.factor, opts.keep_orig)
+		case is_video(kind): ok_file = downscale_video(path, opts.factor, opts.keep_orig)
+		case:                skipped += 1; continue
+		}
+		if ok_file { processed += 1 } else { failed += 1 }
+	}
+	report_summary(processed, skipped, failed)
+	return 0 if failed == 0 else 1
 }
 
 // downscale_image: vipsthumbnail uses pixel count as `-s W` (max edge).

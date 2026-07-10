@@ -102,7 +102,15 @@ walk_recurse :: proc(
 					modification_time = fi.modification_time,
 				})
 			}
-			walk_recurse(out, full_tmp, filter, depth + 1, now, allocator)
+			// Never descend THROUGH a symlink, even with follow_symlinks set:
+			// the collected paths would contain an unresolved symlink component,
+			// so downstream safety checks (fsx.is_path_safe) would judge the
+			// literal string while the OS acts on the link's target — and a
+			// self-referential link would recurse forever. follow_symlinks only
+			// upgrades the *metadata* (stat vs lstat) of the entry itself.
+			if e.type == .Directory {
+				walk_recurse(out, full_tmp, filter, depth + 1, now, allocator)
+			}
 		} else if fi.type == .Regular {
 			if passes_filter(fi, filter, now) {
 				keep, _ := filepath.join({dir, e.name}, allocator)

@@ -20,8 +20,7 @@ RunResult :: struct {
 // so untrusted strings in command args cannot inject shell metacharacters.
 run :: proc(command: []string, allocator := context.allocator) -> RunResult {
 	desc := os.Process_Desc{ command = command }
-	proc_call := os.process_exec
-	state, stdout, stderr, err := proc_call(desc, allocator)
+	state, stdout, stderr, err := os.process_exec(desc, allocator)
 
 	out := RunResult{
 		stdout = string(stdout),

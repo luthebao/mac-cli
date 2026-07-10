@@ -378,7 +378,7 @@ pick :: proc(title: string, items: []MenuItem) -> (selected: int, ok: bool) {
 
 @(private="file")
 render :: proc(title: string, items: []MenuItem, cursor: int) -> int {
-	fmt.println(util.bold(title))
+	fmt.println(util.bold(title, context.temp_allocator))
 	fmt.println()
 	lines := 2
 

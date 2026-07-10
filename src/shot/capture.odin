@@ -27,11 +27,23 @@ timestamp_now :: proc(allocator := context.allocator) -> string {
 	return strings.clone(r.stdout, allocator)
 }
 
-// build_path composes "<Desktop>/<label>-<ts>.png".
+// build_path composes "<Desktop>/<label>-<ts>.png", appending "-2", "-3", …
+// while the name is taken. The timestamp only has second resolution and
+// screencapture overwrites silently, so two shots within the same second
+// would otherwise clobber each other.
 build_path :: proc(label: string, allocator := context.allocator) -> string {
 	ts := timestamp_now(context.temp_allocator)
-	fname := fmt.aprintf("%s-%s.png", label, ts, allocator = context.temp_allocator)
-	return strings.concatenate({desktop_dir(context.temp_allocator), "/", fname}, allocator)
+	base := fmt.aprintf("%s/%s-%s",
+		desktop_dir(context.temp_allocator), label, ts,
+		allocator = context.temp_allocator)
+	path := strings.concatenate({base, ".png"}, context.temp_allocator)
+	for n := 2; ; n += 1 {
+		if _, err := os.stat(path, context.temp_allocator); err != nil {
+			break // name is free
+		}
+		path = fmt.aprintf("%s-%d.png", base, n, allocator = context.temp_allocator)
+	}
+	return strings.clone(path, allocator)
 }
 
 // capture_full_screen runs `screencapture -x <path>`. -x silences the

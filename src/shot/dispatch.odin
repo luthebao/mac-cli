@@ -39,8 +39,11 @@ dispatch :: proc(args: []string) -> int {
 		return 0
 	}
 
-	pid_str := cli.string_flag(p, "pid", "")
-	if pid_str != "" {
+	if pid_str, pid_set := p.values["pid"]; pid_set {
+		if pid_str == "" {
+			fmt.eprintln("mac-cli shot: -p needs a PID value (try `mac-cli shot -l` to list apps)")
+			return 2
+		}
 		pid, ok := strconv.parse_int(pid_str)
 		if !ok || pid <= 0 {
 			fmt.eprintfln("mac-cli shot: invalid PID %q", pid_str)
@@ -58,17 +61,8 @@ dispatch :: proc(args: []string) -> int {
 	return cmd_interactive()
 }
 
+// print_shot_help delegates to the shared help text in mc:cli so there is
+// exactly one source of truth (the local copy had already drifted from it).
 print_shot_help :: proc() {
-	fmt.print(
-`mac-cli shot — take a macOS screenshot
-
-USAGE
-  mac-cli shot              Interactive picker (type to filter, ↑↓ navigate, ⏎ select)
-  mac-cli shot -s           Capture the whole screen
-  mac-cli shot -l           List running GUI apps with PID and name
-  mac-cli shot -p <pid>     Capture the app with the given PID
-
-All screenshots are saved to ~/Desktop as .png files.
-First run may prompt for Screen Recording permission in System Settings.
-`)
+	cli.print_help("shot")
 }

@@ -37,25 +37,23 @@ run_convert :: proc(opts: Options) -> int {
 
 	processed, skipped, failed := 0, 0, 0
 	for path in files {
-		out_path, ok2 := convert_one(path, opts.to_format)
-		if !ok2 {
+		if convert_one(path, opts.to_format) {
+			processed += 1
+		} else {
 			failed += 1
-			continue
 		}
-		_ = out_path
-		processed += 1
 	}
 	report_summary(processed, skipped, failed)
 	return 0 if failed == 0 else 1
 }
 
 @(private)
-convert_one :: proc(path: string, target: string) -> (out_path: string, ok: bool) {
+convert_one :: proc(path: string, target: string) -> bool {
 	dir := filepath.dir(path)
 	base := filepath.base(path)
 	stem := strings.trim_suffix(base, filepath.ext(base))
 	new_name := fmt.tprintf("%s.%s", stem, target)
-	out, _ := filepath.join({dir, new_name}, context.allocator)
+	out, _ := filepath.join({dir, new_name}, context.temp_allocator)
 
 	// Refuse to clobber an existing target. cwebp/heif-enc will both
 	// silently overwrite, which is the wrong default for a CLI invoked
@@ -64,7 +62,7 @@ convert_one :: proc(path: string, target: string) -> (out_path: string, ok: bool
 	if _, err := os.stat(out, context.temp_allocator); err == nil {
 		fmt.eprintfln("  %s  %s (target %q already exists; delete it to retry)",
 			util.yellow("skip", context.temp_allocator), path, out)
-		return "", false
+		return false
 	}
 
 	qstr := fmt.tprintf("%d", CONVERT_QUALITY)
@@ -85,14 +83,14 @@ convert_one :: proc(path: string, target: string) -> (out_path: string, ok: bool
 	case:
 		fmt.eprintfln("  %s  %s (unsupported target %q)",
 			util.yellow("fail", context.temp_allocator), path, target)
-		return "", false
+		return false
 	}
 
 	if !sysx.run_quiet(args) {
 		os.remove(out)
 		fmt.eprintfln("  %s  %s", util.yellow("fail", context.temp_allocator), path)
-		return "", false
+		return false
 	}
 	fmt.printfln("  %s  %s → %s", util.green("done", context.temp_allocator), path, out)
-	return out, true
+	return true
 }

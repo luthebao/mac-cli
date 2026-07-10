@@ -163,7 +163,7 @@ read_csi :: proc() -> Key {
 	// Up/Down based on the final byte.
 	final: u8 = 0
 	saw_params := false
-	for i in 0..<32 {
+	for _ in 0..<32 {
 		b: [1]u8
 		// Bytes inside a CSI arrive contiguously — a short poll keeps
 		// us robust against a half-delivered sequence.

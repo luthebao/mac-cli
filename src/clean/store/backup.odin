@@ -40,8 +40,8 @@ BackupEntry :: struct {
 }
 
 // list_backups enumerates session directories under backup_root().
-// Returned slice is owned by the caller; entries reference temp_allocator
-// strings so callers should clone if needed.
+// Returned slice and its path strings are allocated with `allocator` and
+// owned by the caller.
 list_backups :: proc(allocator := context.allocator) -> []BackupEntry {
 	root := backup_root(context.temp_allocator)
 	entries, err := os.read_directory_by_path(root, -1, context.temp_allocator)

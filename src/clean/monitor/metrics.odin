@@ -214,8 +214,12 @@ collect_network :: proc(s: ^Snapshot) {
 		if len(fields) < 10 { continue }
 		if !strings.has_prefix(fields[2], "<Link") { continue }
 		if is_noise_iface(fields[0]) { continue }
-		ib, _ := strconv.parse_i64(fields[6])
-		ob, _ := strconv.parse_i64(fields[9])
+		// Index from the END: the Address (MAC) column is absent for
+		// link-layer rows of interfaces without one, shifting everything
+		// after it left by one. The trailing columns are fixed:
+		// … Ibytes Opkts Oerrs Obytes Coll
+		ib, _ := strconv.parse_i64(fields[len(fields)-5])
+		ob, _ := strconv.parse_i64(fields[len(fields)-2])
 		rx += ib
 		tx += ob
 	}
@@ -257,9 +261,7 @@ sysctl_str :: proc(name: string, allocator := context.allocator) -> string {
 
 @(private)
 sysctl_i64 :: proc(name: string) -> i64 {
-	r := sysx.run_capture({"sysctl", "-n", name}, context.temp_allocator)
-	if !r.ok { return 0 }
-	v, _ := strconv.parse_i64(strings.trim_space(r.stdout))
+	v, _ := strconv.parse_i64(sysctl_str(name, context.temp_allocator))
 	return v
 }
 

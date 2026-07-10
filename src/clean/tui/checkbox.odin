@@ -27,6 +27,12 @@ CheckboxResult :: enum {
 //   - Drill_Down with drill_index = the focused item
 //   - Cancelled with drill_index = -1
 checkbox :: proc(title: string, items: []CheckboxItem) -> (result: CheckboxResult, drill_index: int) {
+	if len(items) == 0 {
+		// Nothing to pick. Bail before the event loop: `% len(items)` and
+		// `items[cursor]` below would trap on an empty slice, aborting the
+		// process with the terminal still in raw mode.
+		return .Submitted, -1
+	}
 	if !enter_raw() {
 		// No TTY; auto-submit current state.
 		return .Submitted, -1
@@ -72,7 +78,7 @@ checkbox :: proc(title: string, items: []CheckboxItem) -> (result: CheckboxResul
 				return .Cancelled, -1
 			}
 		case .Right:
-			if items[cursor].supports_drill {
+			if items[cursor].supports_drill && !items[cursor].disabled {
 				clear_lines(height_lines)
 				return .Drill_Down, cursor
 			}

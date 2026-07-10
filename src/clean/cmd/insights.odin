@@ -3,6 +3,7 @@ package clean_cmd
 import "core:fmt"
 import "core:strconv"
 import "core:strings"
+import "core:unicode/utf8"
 
 import "mc:cli"
 import "mc:clean/insights"
@@ -142,14 +143,29 @@ size_bar :: proc(frac: f64, allocator := context.allocator) -> string {
 }
 
 // truncate clips a string to n runes, appending "…" when cut. Keeps columns
-// aligned when a folder name is longer than the field width.
+// aligned when a folder name is longer than the field width. Slicing must
+// happen on rune boundaries — byte offsets would cut multi-byte UTF-8
+// (accents, CJK, emoji) mid-codepoint and render garbage.
 @(private="file")
 truncate :: proc(s: string, n: int) -> string {
-	if len(s) <= n {
+	if n <= 0 {
+		return ""
+	}
+	if utf8.rune_count_in_string(s) <= n {
 		return s
 	}
-	if n <= 1 {
-		return s[:n]
+	keep := n > 1 ? n - 1 : n // leave room for the ellipsis
+	offset := len(s)
+	seen := 0
+	for _, i in s {
+		if seen == keep {
+			offset = i
+			break
+		}
+		seen += 1
 	}
-	return fmt.tprintf("%s…", s[:n - 1])
+	if n <= 1 {
+		return s[:offset]
+	}
+	return fmt.tprintf("%s…", s[:offset])
 }

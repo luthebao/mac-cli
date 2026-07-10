@@ -25,6 +25,9 @@ SAFE_ROOTS := [?]string{
 	"{HOME}/Library/Application Support/*/Code Cache",
 	"{HOME}/Library/Application Support/*/GPUCache",
 	"{HOME}/Library/Application Support/*/Service Worker/CacheStorage",
+	// Chrome keeps per-profile caches nested one level deeper than the
+	// generic Electron pattern above (Google/Chrome/<profile>/Cache).
+	"{HOME}/Library/Application Support/Google/Chrome/*/Cache",
 	"{HOME}/Library/Containers/*/Data/Library/Caches",
 	"{HOME}/Library/WebKit",
 	"{HOME}/Library/Saved Application State",
@@ -48,8 +51,10 @@ SAFE_ROOTS := [?]string{
 	"/opt/homebrew/bin",
 	"/tmp",
 	"/private/tmp",
+	// /var/folders paths are canonicalized to /private/var/folders before
+	// matching (see canonicalize_var_folders), so this one entry covers both
+	// spellings without weakening DANGER_PATHS' /var refusal.
 	"/private/var/folders",
-	"/var/folders",
 	"/Library/Caches",
 	"/Library/Logs",
 	"/Library/LaunchAgents",
@@ -84,6 +89,7 @@ SAFE_LEAF_ROOTS := [?]string{
 	"{HOME}/Library/Application Support/*/Code Cache",
 	"{HOME}/Library/Application Support/*/GPUCache",
 	"{HOME}/Library/Application Support/*/Service Worker/CacheStorage",
+	"{HOME}/Library/Application Support/Google/Chrome/*/Cache",
 	"{HOME}/Library/Containers/*/Data/Library/Caches",
 }
 
@@ -116,15 +122,10 @@ is_path_safe :: proc(path: string) -> bool {
 	}
 
 	cleaned, _ := filepath.clean(path, context.temp_allocator)
+	cleaned = canonicalize_var_folders(cleaned)
 
-	for danger in DANGER_PATHS {
-		if cleaned == danger {
-			return false
-		}
-		// Refuse anything strictly under a danger path too.
-		if has_path_prefix(cleaned, danger) {
-			return false
-		}
+	if is_dangerous(cleaned) {
+		return false
 	}
 
 	h := home(context.temp_allocator)
@@ -152,6 +153,32 @@ is_path_safe :: proc(path: string) -> bool {
 			return is_leaf_root(root)
 		}
 		if has_path_prefix(cleaned, expanded) {
+			return true
+		}
+	}
+	return false
+}
+
+// canonicalize_var_folders maps /var/folders/... to /private/var/folders/...
+// (macOS mounts /var as a symlink to /private/var, and scanners plus $TMPDIR
+// both produce the /var spelling). Without this, DANGER_PATHS' /var entry
+// refuses every temp path before the /private/var/folders safe root is ever
+// consulted. Only this subtree is rewritten — everything else under /var
+// stays refused.
+@(private)
+canonicalize_var_folders :: proc(cleaned: string) -> string {
+	if cleaned == "/var/folders" || has_path_prefix(cleaned, "/var/folders") {
+		return strings.concatenate({"/private", cleaned}, context.temp_allocator)
+	}
+	return cleaned
+}
+
+// is_dangerous reports whether `cleaned` is equal to or strictly under any
+// DANGER_PATHS entry. Shared by both safety tiers so they cannot drift.
+@(private)
+is_dangerous :: proc(cleaned: string) -> bool {
+	for danger in DANGER_PATHS {
+		if cleaned == danger || has_path_prefix(cleaned, danger) {
 			return true
 		}
 	}
@@ -217,8 +244,8 @@ has_path_prefix :: proc(path, prefix: string) -> bool {
 
 // is_path_safe_reviewed is the relaxed gate for files the user has explicitly
 // reviewed and hand-picked — the file-selection categories (Large Files,
-// Duplicate Files, old Downloads), which surface arbitrary files from anywhere
-// under $HOME rather than from a known cache location.
+// Duplicate Files, old Downloads, Node Modules), which surface arbitrary
+// paths from anywhere under $HOME rather than from a known cache location.
 //
 // The strict is_path_safe allowlist exists to stop *accidental/automated*
 // deletion of unexpected paths. Per-file user selection is a different trust
@@ -231,11 +258,10 @@ is_path_safe_reviewed :: proc(path: string) -> bool {
 		return false
 	}
 	cleaned, _ := filepath.clean(path, context.temp_allocator)
+	cleaned = canonicalize_var_folders(cleaned)
 
-	for danger in DANGER_PATHS {
-		if cleaned == danger || has_path_prefix(cleaned, danger) {
-			return false
-		}
+	if is_dangerous(cleaned) {
+		return false
 	}
 
 	h := home(context.temp_allocator)

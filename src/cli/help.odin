@@ -62,10 +62,6 @@ EXAMPLES
   mac-cli clean maintenance --dns
 `
 
-print_top_help :: proc() {
-	fmt.print(TOP_USAGE)
-}
-
 SHOT_USAGE :: `mac-cli shot — take a macOS screenshot
 
 USAGE

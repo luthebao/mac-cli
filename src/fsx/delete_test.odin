@@ -160,6 +160,34 @@ test_is_path_safe_reviewed :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_var_folders_both_spellings_safe :: proc(t: ^testing.T) {
+	// macOS mounts /var → /private/var; the temp-files scanner and $TMPDIR
+	// produce the /var spelling. Both must be judged identically, and
+	// DANGER_PATHS' /var entry must not shadow the safe root (a regression
+	// that once made the whole Temp Files category refuse to clean).
+	testing.expect(t, is_path_safe("/var/folders/x1/y2/T/cache.db"), "must allow /var/folders/…")
+	testing.expect(t, is_path_safe("/private/var/folders/x1/y2/T/cache.db"), "must allow /private/var/folders/…")
+	// The rest of /var stays refused.
+	testing.expect(t, !is_path_safe("/var/db/foo"), "must refuse /var/db")
+	testing.expect(t, !is_path_safe("/var/root/x"), "must refuse /var/root")
+	testing.expect(t, !is_path_safe("/var/folders"), "must refuse the root itself")
+}
+
+@(test)
+test_chrome_profile_cache_deletable :: proc(t: ^testing.T) {
+	h := os.get_env("HOME", context.temp_allocator)
+	if h == "" {
+		return
+	}
+	// Chrome nests per-profile caches one level deeper than the generic
+	// Electron pattern; the browser-cache scanner surfaces the dir itself.
+	p := fmt.aprintf("%s/Library/Application Support/Google/Chrome/Default/Cache", h, allocator = context.temp_allocator)
+	testing.expect(t, is_path_safe(p), "must allow Chrome per-profile Cache dirs")
+	other := fmt.aprintf("%s/Library/Application Support/Google/Chrome/Default/Bookmarks", h, allocator = context.temp_allocator)
+	testing.expect(t, !is_path_safe(other), "must refuse non-cache Chrome profile data")
+}
+
+@(test)
 test_wildcard_root_accepts_external_trash :: proc(t: ^testing.T) {
 	p := "/Volumes/MyDisk/.Trashes/501/something.txt"
 	testing.expect(t, is_path_safe(p), "must allow per-uid external trash entries")

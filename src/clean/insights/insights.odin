@@ -128,26 +128,35 @@ largest_files :: proc(root: string, top_n: int, allocator: runtime.Allocator) ->
 	}
 	r := sysx.run({"find", root, "-type", "f", "-size", "+100000k"}, context.temp_allocator)
 
-	files := make([dynamic]Entry, 0, 64, context.temp_allocator)
-	count := 0
+	// Bounded top-N insertion: `files` is kept sorted descending and capped at
+	// top_n entries, so pathological result sets stay O(top_n) memory without
+	// truncating by find's traversal order (a hard input cap could silently
+	// drop the actual largest files in favor of smaller ones found earlier).
+	files := make([dynamic]Entry, 0, top_n + 1, context.temp_allocator)
 	for line in strings.split_lines_iterator(&r.stdout) {
 		p := strings.trim_space(line)
 		if p == "" {
 			continue
 		}
-		count += 1
-		if count > 4000 {
-			break // safety cap on absurdly large result sets
-		}
 		fi, err := os.stat(p, context.temp_allocator)
 		if err != nil {
 			continue
 		}
-		name := fi.name
-		append(&files, Entry{name = name, path = p, size = fi.size, is_dir = false})
+		if len(files) == top_n && fi.size <= files[len(files)-1].size {
+			continue
+		}
+		ins := len(files)
+		for existing, i in files {
+			if fi.size > existing.size {
+				ins = i
+				break
+			}
+		}
+		inject_at(&files, ins, Entry{name = fi.name, path = p, size = fi.size, is_dir = false})
+		if len(files) > top_n {
+			pop(&files)
+		}
 	}
-
-	slice.sort_by(files[:], proc(a, b: Entry) -> bool { return a.size > b.size })
 
 	n := min(top_n, len(files))
 	out := make([]Entry, n, allocator)
